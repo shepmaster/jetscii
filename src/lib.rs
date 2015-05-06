@@ -21,13 +21,62 @@ impl ByteSearch {
         self.needle |= byte as u64;
         self.count += 1;
     }
-}
 
-#[derive(Debug,Copy,Clone)]
-pub struct ByteSearcher<'a> {
-    haystack: &'a str,
-    offset: usize,
-    needle: ByteSearch,
+    #[inline]
+    pub fn find(self, haystack: &str) -> Option<usize> {
+        let haystack = haystack.as_bytes();
+
+        let ptr = haystack.as_ptr();
+        let mut offset = 0;
+        let mut len = haystack.len();
+
+        let mut res: usize;
+
+        // Zero-length strings have a pointer set to 0x1. Even though the
+        // length is zero, we still trigger a bad access exception. I
+        // think this indicates that the instruction reads in 16 bytes
+        // worth of memory at a time, regardless of the length instruction.
+        //
+        // This could also be an indication of a subtle bug, where we
+        // might trigger access violations if we are near the end of a
+        // page. See the comment by Renat Saifutdinov on
+        // http://www.strchr.com/strcmp_and_strlen_using_sse_4.2
+        // It is suggested to use an "aligned read with mask false bits"
+        // to avoid the problem.
+        //
+        // We don't do this yet.
+        if len == 0 { return None }
+
+        loop {
+            unsafe {
+                asm!("pcmpestri $$0, ($1, $5), $2"
+                     : // output operands
+                     "={ecx}"(res)
+                     : // input operands
+                     "r"(ptr),
+                     "x"(self.needle),
+                     "{rdx}"(len),
+                     "{rax}"(self.count),
+                     "r"(offset)
+                     : // clobbers
+                     : // options
+                     );
+            }
+
+            // We know if it matched if the zero flag is set (or
+            // unset?), we shouldn't need to test res...
+            if res == 16 {
+                if len <= 16 {
+                    return None;
+                }
+
+                offset += 16;
+                len -= 16;
+            } else {
+                return Some(res + offset);
+            }
+        }
+    }
 }
 
 impl<'a> Pattern<'a> for ByteSearch {
@@ -38,6 +87,13 @@ impl<'a> Pattern<'a> for ByteSearch {
     }
 }
 
+#[derive(Debug,Copy,Clone)]
+pub struct ByteSearcher<'a> {
+    haystack: &'a str,
+    offset: usize,
+    needle: ByteSearch,
+}
+
 unsafe impl<'a> Searcher<'a> for ByteSearcher<'a> {
     fn haystack(&self) -> &'a str { self.haystack }
 
@@ -46,7 +102,7 @@ unsafe impl<'a> Searcher<'a> for ByteSearcher<'a> {
         if self.offset >= self.haystack.len() { return SearchStep::Done }
 
         let left_to_search = &self.haystack[self.offset..]; // TODO: unchecked_slice?
-        let idx = find(left_to_search, self.needle);
+        let idx = self.needle.find(left_to_search);
 
         let next_offset = idx.unwrap_or(self.haystack.len());
 
@@ -58,62 +114,6 @@ unsafe impl<'a> Searcher<'a> for ByteSearcher<'a> {
 
         self.offset = next_offset;
         res
-    }
-}
-
-#[inline(never)]
-fn find(haystack: &str, needle: ByteSearch) -> Option<usize> {
-    let haystack = haystack.as_bytes();
-
-    let ptr = haystack.as_ptr();
-    let mut offset = 0;
-    let mut len = haystack.len();
-
-    let mut res: usize;
-
-    // Zero-length strings have a pointer set to 0x1. Even though the
-    // length is zero, we still trigger a bad access exception. I
-    // think this indicates that the instruction reads in 16 bytes
-    // worth of memory at a time, regardless of the length instruction.
-    //
-    // This could also be an indication of a subtle bug, where we
-    // might trigger access violations if we are near the end of a
-    // page. See the comment by Renat Saifutdinov on
-    // http://www.strchr.com/strcmp_and_strlen_using_sse_4.2
-    // It is suggested to use an "aligned read with mask false bits"
-    // to avoid the problem.
-    //
-    // We don't do this yet.
-    if len == 0 { return None }
-
-    loop {
-        unsafe {
-            asm!("pcmpestri $$0, ($1, $5), $2"
-                 : // output operands
-                 "={ecx}"(res)
-                 : // input operands
-                 "r"(ptr),
-                 "x"(needle.needle),
-                 "{rdx}"(len),
-                 "{rax}"(needle.count),
-                 "r"(offset)
-                 : // clobbers
-                 : // options
-                 );
-        }
-
-        // We know if it matched if the zero flag is set (or
-        // unset?), we shouldn't need to test res...
-        if res == 16 {
-            if len <= 16 {
-                return None;
-            }
-
-            offset += 16;
-            len -= 16;
-        } else {
-            return Some(res + offset);
-        }
     }
 }
 
@@ -131,15 +131,15 @@ mod test {
     pub const XML_DELIM_5: ByteSearch = ByteSearch { needle: 0x0000003c3e262722, count: 5 };
 
     pub fn find_space(haystack: &str) -> Option<usize> {
-        super::find(haystack, SPACE)
+        SPACE.find(haystack)
     }
 
     pub fn find_xml_delim_3(haystack: &str) -> Option<usize> {
-        super::find(haystack, XML_DELIM_3)
+        XML_DELIM_3.find(haystack)
     }
 
     pub fn find_xml_delim_5(haystack: &str) -> Option<usize> {
-        super::find(haystack, XML_DELIM_5)
+        XML_DELIM_5.find(haystack)
     }
 
     #[test]
