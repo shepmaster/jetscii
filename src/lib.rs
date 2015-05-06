@@ -130,28 +130,8 @@ mod test {
     // < > & ' "
     pub const XML_DELIM_5: ByteSearch = ByteSearch { needle: 0x0000003c3e262722, count: 5 };
 
-    pub fn find_space(haystack: &str) -> Option<usize> {
-        SPACE.find(haystack)
-    }
-
-    pub fn find_xml_delim_3(haystack: &str) -> Option<usize> {
-        XML_DELIM_3.find(haystack)
-    }
-
-    pub fn find_xml_delim_5(haystack: &str) -> Option<usize> {
-        XML_DELIM_5.find(haystack)
-    }
-
     #[test]
-    fn works_as_find_does_for_single_character() {
-        fn prop(s: String) -> bool {
-            find_space(&s) == s.find(' ')
-        }
-        quickcheck(prop as fn(String) -> bool);
-    }
-
-    #[test]
-    fn works_as_find_does_for_single_character2() {
+    fn works_as_find_does_for_single_characters() {
         fn prop(s: String) -> bool {
             s.find(SPACE) == s.find(' ')
         }
@@ -159,9 +139,9 @@ mod test {
     }
 
     #[test]
-    fn works_as_find_does_for_single_character3() {
+    fn works_as_find_does_for_multiple_characters() {
         fn prop(s: String) -> bool {
-            s.find(SPACE) == find_space(&s)
+            s.find(XML_DELIM_5) == s.find(&['<', '>', '&', '\'', '"'][..])
         }
         quickcheck(prop as fn(String) -> bool);
     }
@@ -173,24 +153,24 @@ mod test {
         // isn't that big of a number, we might as well do all of
         // them.
 
-        assert_eq!(Some(0),  find_space(" "));
-        assert_eq!(Some(1),  find_space("0 "));
-        assert_eq!(Some(2),  find_space("01 "));
-        assert_eq!(Some(3),  find_space("012 "));
-        assert_eq!(Some(4),  find_space("0123 "));
-        assert_eq!(Some(5),  find_space("01234 "));
-        assert_eq!(Some(6),  find_space("012345 "));
-        assert_eq!(Some(7),  find_space("0123456 "));
-        assert_eq!(Some(8),  find_space("01234567 "));
-        assert_eq!(Some(9),  find_space("012345678 "));
-        assert_eq!(Some(10), find_space("0123456789 "));
-        assert_eq!(Some(11), find_space("0123456789A "));
-        assert_eq!(Some(12), find_space("0123456789AB "));
-        assert_eq!(Some(13), find_space("0123456789ABC "));
-        assert_eq!(Some(14), find_space("0123456789ABCD "));
-        assert_eq!(Some(15), find_space("0123456789ABCDE "));
-        assert_eq!(Some(16), find_space("0123456789ABCDEF "));
-        assert_eq!(Some(17), find_space("0123456789ABCDEFG "));
+        assert_eq!(Some(0),  SPACE.find(" "));
+        assert_eq!(Some(1),  SPACE.find("0 "));
+        assert_eq!(Some(2),  SPACE.find("01 "));
+        assert_eq!(Some(3),  SPACE.find("012 "));
+        assert_eq!(Some(4),  SPACE.find("0123 "));
+        assert_eq!(Some(5),  SPACE.find("01234 "));
+        assert_eq!(Some(6),  SPACE.find("012345 "));
+        assert_eq!(Some(7),  SPACE.find("0123456 "));
+        assert_eq!(Some(8),  SPACE.find("01234567 "));
+        assert_eq!(Some(9),  SPACE.find("012345678 "));
+        assert_eq!(Some(10), SPACE.find("0123456789 "));
+        assert_eq!(Some(11), SPACE.find("0123456789A "));
+        assert_eq!(Some(12), SPACE.find("0123456789AB "));
+        assert_eq!(Some(13), SPACE.find("0123456789ABC "));
+        assert_eq!(Some(14), SPACE.find("0123456789ABCD "));
+        assert_eq!(Some(15), SPACE.find("0123456789ABCDE "));
+        assert_eq!(Some(16), SPACE.find("0123456789ABCDEF "));
+        assert_eq!(Some(17), SPACE.find("0123456789ABCDEFG "));
     }
 
     #[test]
@@ -200,42 +180,42 @@ mod test {
         // isn't that big of a number, we might as well do all of
         // them.
 
-        assert_eq!(None, find_space(""));
-        assert_eq!(None, find_space("0"));
-        assert_eq!(None, find_space("01"));
-        assert_eq!(None, find_space("012"));
-        assert_eq!(None, find_space("0123"));
-        assert_eq!(None, find_space("01234"));
-        assert_eq!(None, find_space("012345"));
-        assert_eq!(None, find_space("0123456"));
-        assert_eq!(None, find_space("01234567"));
-        assert_eq!(None, find_space("012345678"));
-        assert_eq!(None, find_space("0123456789"));
-        assert_eq!(None, find_space("0123456789A"));
-        assert_eq!(None, find_space("0123456789AB"));
-        assert_eq!(None, find_space("0123456789ABC"));
-        assert_eq!(None, find_space("0123456789ABCD"));
-        assert_eq!(None, find_space("0123456789ABCDE"));
-        assert_eq!(None, find_space("0123456789ABCDEF"));
-        assert_eq!(None, find_space("0123456789ABCDEFG"));
+        assert_eq!(None, SPACE.find(""));
+        assert_eq!(None, SPACE.find("0"));
+        assert_eq!(None, SPACE.find("01"));
+        assert_eq!(None, SPACE.find("012"));
+        assert_eq!(None, SPACE.find("0123"));
+        assert_eq!(None, SPACE.find("01234"));
+        assert_eq!(None, SPACE.find("012345"));
+        assert_eq!(None, SPACE.find("0123456"));
+        assert_eq!(None, SPACE.find("01234567"));
+        assert_eq!(None, SPACE.find("012345678"));
+        assert_eq!(None, SPACE.find("0123456789"));
+        assert_eq!(None, SPACE.find("0123456789A"));
+        assert_eq!(None, SPACE.find("0123456789AB"));
+        assert_eq!(None, SPACE.find("0123456789ABC"));
+        assert_eq!(None, SPACE.find("0123456789ABCD"));
+        assert_eq!(None, SPACE.find("0123456789ABCDE"));
+        assert_eq!(None, SPACE.find("0123456789ABCDEF"));
+        assert_eq!(None, SPACE.find("0123456789ABCDEFG"));
     }
 
     #[test]
     fn xml_delim_3_is_found() {
-        assert_eq!(Some(0), find_xml_delim_3("<"));
-        assert_eq!(Some(0), find_xml_delim_3(">"));
-        assert_eq!(Some(0), find_xml_delim_3("&"));
-        assert_eq!(None,    find_xml_delim_3(""));
+        assert_eq!(Some(0), XML_DELIM_3.find("<"));
+        assert_eq!(Some(0), XML_DELIM_3.find(">"));
+        assert_eq!(Some(0), XML_DELIM_3.find("&"));
+        assert_eq!(None,    XML_DELIM_3.find(""));
     }
 
     #[test]
     fn xml_delim_5_is_found() {
-        assert_eq!(Some(0), find_xml_delim_5("<"));
-        assert_eq!(Some(0), find_xml_delim_5(">"));
-        assert_eq!(Some(0), find_xml_delim_5("&"));
-        assert_eq!(Some(0), find_xml_delim_5("'"));
-        assert_eq!(Some(0), find_xml_delim_5("\""));
-        assert_eq!(None,    find_xml_delim_5(""));
+        assert_eq!(Some(0), XML_DELIM_5.find("<"));
+        assert_eq!(Some(0), XML_DELIM_5.find(">"));
+        assert_eq!(Some(0), XML_DELIM_5.find("&"));
+        assert_eq!(Some(0), XML_DELIM_5.find("'"));
+        assert_eq!(Some(0), XML_DELIM_5.find("\""));
+        assert_eq!(None,    XML_DELIM_5.find(""));
     }
 }
 
@@ -243,7 +223,7 @@ mod test {
 mod bench {
     extern crate test;
 
-    use super::test::{find_space,find_xml_delim_3,find_xml_delim_5};
+    use super::test::{SPACE,XML_DELIM_3,XML_DELIM_5};
     use std::iter;
 
     fn prefix_string() -> String {
@@ -262,7 +242,12 @@ mod bench {
 
     #[bench]
     fn space_assembly(b: &mut test::Bencher) {
-        bench_space(b, |hs| find_space(hs))
+        bench_space(b, |hs| SPACE.find(hs))
+    }
+
+    #[bench]
+    fn space_assembly_as_pattern(b: &mut test::Bencher) {
+        bench_space(b, |hs| hs.find(SPACE))
     }
 
     #[bench]
@@ -297,7 +282,12 @@ mod bench {
 
     #[bench]
     fn xml_delim_3_assembly(b: &mut test::Bencher) {
-        bench_xml_delim_3(b, |hs| find_xml_delim_3(hs))
+        bench_xml_delim_3(b, |hs| XML_DELIM_3.find(hs))
+    }
+
+    #[bench]
+    fn xml_delim_3_assembly_as_pattern(b: &mut test::Bencher) {
+        bench_xml_delim_3(b, |hs| hs.find(XML_DELIM_3))
     }
 
     #[bench]
@@ -317,7 +307,12 @@ mod bench {
 
     #[bench]
     fn xml_delim_5_assembly(b: &mut test::Bencher) {
-        bench_xml_delim_5(b, |hs| find_xml_delim_5(hs))
+        bench_xml_delim_5(b, |hs| XML_DELIM_5.find(hs))
+    }
+
+    #[bench]
+    fn xml_delim_5_assembly_as_pattern(b: &mut test::Bencher) {
+        bench_xml_delim_5(b, |hs| hs.find(XML_DELIM_5))
     }
 
     #[bench]
