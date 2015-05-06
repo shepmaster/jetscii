@@ -89,144 +89,177 @@ fn main() {
     println!("Found a space at {:?}", res);
 }
 
-#[test]
-fn space_is_found() {
-    assert_eq!(Some(0),  find_space(" "));
-    assert_eq!(Some(1),  find_space("0 "));
-    assert_eq!(Some(2),  find_space("01 "));
-    assert_eq!(Some(3),  find_space("012 "));
-    assert_eq!(Some(4),  find_space("0123 "));
-    assert_eq!(Some(5),  find_space("01234 "));
-    assert_eq!(Some(6),  find_space("012345 "));
-    assert_eq!(Some(7),  find_space("0123456 "));
-    assert_eq!(Some(8),  find_space("01234567 "));
-    assert_eq!(Some(9),  find_space("012345678 "));
-    assert_eq!(Some(10), find_space("0123456789 "));
-    assert_eq!(Some(11), find_space("0123456789A "));
-    assert_eq!(Some(12), find_space("0123456789AB "));
-    assert_eq!(Some(13), find_space("0123456789ABC "));
-    assert_eq!(Some(14), find_space("0123456789ABCD "));
-    assert_eq!(Some(15), find_space("0123456789ABCDE "));
-    assert_eq!(Some(16), find_space("0123456789ABCDEF "));
-    assert_eq!(Some(17), find_space("0123456789ABCDEFG "));
+#[cfg(test)]
+mod test {
+    extern crate quickcheck;
+
+    use super::{find_space,find_xml_delim_3,find_xml_delim_5};
+    use self::quickcheck::quickcheck;
+
+    #[test]
+    fn works_as_find_does_for_single_character() {
+        fn prop(s: String) -> bool {
+            find_space(&s) == s.find(' ')
+        }
+        quickcheck(prop as fn(String) -> bool);
+    }
+
+    #[test]
+    fn space_is_found() {
+        // Since the algorithm operates on 16-byte chunks, it's
+        // important to cover tests around that boundary. Since 16
+        // isn't that big of a number, we might as well do all of
+        // them.
+
+        assert_eq!(Some(0),  find_space(" "));
+        assert_eq!(Some(1),  find_space("0 "));
+        assert_eq!(Some(2),  find_space("01 "));
+        assert_eq!(Some(3),  find_space("012 "));
+        assert_eq!(Some(4),  find_space("0123 "));
+        assert_eq!(Some(5),  find_space("01234 "));
+        assert_eq!(Some(6),  find_space("012345 "));
+        assert_eq!(Some(7),  find_space("0123456 "));
+        assert_eq!(Some(8),  find_space("01234567 "));
+        assert_eq!(Some(9),  find_space("012345678 "));
+        assert_eq!(Some(10), find_space("0123456789 "));
+        assert_eq!(Some(11), find_space("0123456789A "));
+        assert_eq!(Some(12), find_space("0123456789AB "));
+        assert_eq!(Some(13), find_space("0123456789ABC "));
+        assert_eq!(Some(14), find_space("0123456789ABCD "));
+        assert_eq!(Some(15), find_space("0123456789ABCDE "));
+        assert_eq!(Some(16), find_space("0123456789ABCDEF "));
+        assert_eq!(Some(17), find_space("0123456789ABCDEFG "));
+    }
+
+    #[test]
+    fn space_not_found() {
+        // Since the algorithm operates on 16-byte chunks, it's
+        // important to cover tests around that boundary. Since 16
+        // isn't that big of a number, we might as well do all of
+        // them.
+
+        assert_eq!(None, find_space(""));
+        assert_eq!(None, find_space("0"));
+        assert_eq!(None, find_space("01"));
+        assert_eq!(None, find_space("012"));
+        assert_eq!(None, find_space("0123"));
+        assert_eq!(None, find_space("01234"));
+        assert_eq!(None, find_space("012345"));
+        assert_eq!(None, find_space("0123456"));
+        assert_eq!(None, find_space("01234567"));
+        assert_eq!(None, find_space("012345678"));
+        assert_eq!(None, find_space("0123456789"));
+        assert_eq!(None, find_space("0123456789A"));
+        assert_eq!(None, find_space("0123456789AB"));
+        assert_eq!(None, find_space("0123456789ABC"));
+        assert_eq!(None, find_space("0123456789ABCD"));
+        assert_eq!(None, find_space("0123456789ABCDE"));
+        assert_eq!(None, find_space("0123456789ABCDEF"));
+        assert_eq!(None, find_space("0123456789ABCDEFG"));
+    }
+
+    #[test]
+    fn xml_delim_3_is_found() {
+        assert_eq!(Some(0), find_xml_delim_3("<"));
+        assert_eq!(Some(0), find_xml_delim_3(">"));
+        assert_eq!(Some(0), find_xml_delim_3("&"));
+        assert_eq!(None,    find_xml_delim_3(""));
+    }
+
+    #[test]
+    fn xml_delim_5_is_found() {
+        assert_eq!(Some(0), find_xml_delim_5("<"));
+        assert_eq!(Some(0), find_xml_delim_5(">"));
+        assert_eq!(Some(0), find_xml_delim_5("&"));
+        assert_eq!(Some(0), find_xml_delim_5("'"));
+        assert_eq!(Some(0), find_xml_delim_5("\""));
+        assert_eq!(None,    find_xml_delim_5(""));
+    }
 }
 
-#[test]
-fn space_not_found() {
-    assert_eq!(None, find_space(""));
-    assert_eq!(None, find_space("0"));
-    assert_eq!(None, find_space("01"));
-    assert_eq!(None, find_space("012"));
-    assert_eq!(None, find_space("0123"));
-    assert_eq!(None, find_space("01234"));
-    assert_eq!(None, find_space("012345"));
-    assert_eq!(None, find_space("0123456"));
-    assert_eq!(None, find_space("01234567"));
-    assert_eq!(None, find_space("012345678"));
-    assert_eq!(None, find_space("0123456789"));
-    assert_eq!(None, find_space("0123456789A"));
-    assert_eq!(None, find_space("0123456789AB"));
-    assert_eq!(None, find_space("0123456789ABC"));
-    assert_eq!(None, find_space("0123456789ABCD"));
-    assert_eq!(None, find_space("0123456789ABCDE"));
-    assert_eq!(None, find_space("0123456789ABCDEF"));
-    assert_eq!(None, find_space("0123456789ABCDEFG"));
-}
+#[cfg(test)]
+mod bench {
+    extern crate test;
 
-#[test]
-fn xml_delim_3_is_found() {
-    assert_eq!(Some(0), find_xml_delim_3("<"));
-    assert_eq!(Some(0), find_xml_delim_3(">"));
-    assert_eq!(Some(0), find_xml_delim_3("&"));
-    assert_eq!(None,    find_xml_delim_3(""));
-}
+    use super::{find_space,find_xml_delim_3,find_xml_delim_5};
+    use std::iter;
 
-#[test]
-fn xml_delim_5_is_found() {
-    assert_eq!(Some(0), find_xml_delim_5("<"));
-    assert_eq!(Some(0), find_xml_delim_5(">"));
-    assert_eq!(Some(0), find_xml_delim_5("&"));
-    assert_eq!(Some(0), find_xml_delim_5("'"));
-    assert_eq!(Some(0), find_xml_delim_5("\""));
-    assert_eq!(None,    find_xml_delim_5(""));
-}
+    fn prefix_string() -> String {
+        iter::repeat("a").take(5 * 1024 * 1024).collect()
+    }
 
-extern crate test;
+    fn bench_space<F>(b: &mut test::Bencher, f: F)
+        where F: Fn(&str) -> Option<usize>
+    {
+        let mut haystack = prefix_string();
+        haystack.push(' ');
 
-#[inline(always)]
-fn bench_space<F>(b: &mut test::Bencher, f: F)
-    where F: Fn(&str) -> Option<usize>
-{
-    let mut haystack:String = ::std::iter::repeat("a").take(5 * 1024 * 1024).collect();
-    haystack.push(' ');
+        b.iter(|| test::black_box(f(&haystack)));
+        b.bytes = haystack.len() as u64;
+    }
 
-    b.iter(|| test::black_box(f(&haystack)));
-    b.bytes = haystack.len() as u64;
-}
+    #[bench]
+    fn space_assembly(b: &mut test::Bencher) {
+        bench_space(b, |hs| find_space(hs))
+    }
 
-#[bench]
-fn space_assembly_5mb(b: &mut test::Bencher) {
-    bench_space(b, |hs| find_space(hs))
-}
+    #[bench]
+    fn space_find_string(b: &mut test::Bencher) {
+        bench_space(b, |hs| hs.find(" "))
+    }
 
-#[bench]
-fn space_find_string_5mb(b: &mut test::Bencher) {
-    bench_space(b, |hs| hs.find(" "))
-}
+    #[bench]
+    fn space_find_char(b: &mut test::Bencher) {
+        bench_space(b, |hs| hs.find(' '))
+    }
 
-#[bench]
-fn space_find_char_5mb(b: &mut test::Bencher) {
-    bench_space(b, |hs| hs.find(' '))
-}
+    #[bench]
+    fn space_find_char_set(b: &mut test::Bencher) {
+        bench_space(b, |hs| hs.find(&[' '][..]))
+    }
 
-#[bench]
-fn space_find_char_set_5mb(b: &mut test::Bencher) {
-    bench_space(b, |hs| hs.find(&[' '][..]))
-}
+    #[bench]
+    fn space_find_byte(b: &mut test::Bencher) {
+        bench_space(b, |hs| hs.as_bytes().iter().position(|&v| v == b' '))
+    }
 
-#[bench]
-fn space_find_byte_5mb(b: &mut test::Bencher) {
-    bench_space(b, |hs| hs.as_bytes().iter().position(|&v| v == b' '))
-}
+    fn bench_xml_delim_3<F>(b: &mut test::Bencher, f: F)
+        where F: Fn(&str) -> Option<usize>
+    {
+        let mut haystack = prefix_string();
+        haystack.push('&');
 
-#[inline(always)]
-fn bench_xml_delim_3<F>(b: &mut test::Bencher, f: F)
-    where F: Fn(&str) -> Option<usize>
-{
-    let mut haystack:String = ::std::iter::repeat("a").take(5 * 1024 * 1024).collect();
-    haystack.push('&');
+        b.iter(|| test::black_box(f(&haystack)));
+        b.bytes = haystack.len() as u64;
+    }
 
-    b.iter(|| test::black_box(f(&haystack)));
-    b.bytes = haystack.len() as u64;
-}
+    #[bench]
+    fn xml_delim_3_assembly(b: &mut test::Bencher) {
+        bench_xml_delim_3(b, |hs| find_xml_delim_3(hs))
+    }
 
-#[bench]
-fn xml_delim_3_assembly_5mb(b: &mut test::Bencher) {
-    bench_xml_delim_3(b, |hs| find_xml_delim_3(hs))
-}
+    #[bench]
+    fn xml_delim_3_find_char_set(b: &mut test::Bencher) {
+        bench_xml_delim_3(b, |hs| hs.find(&['<', '>', '&'][..]))
+    }
 
-#[bench]
-fn xml_delim_3_find_char_set_5mb(b: &mut test::Bencher) {
-    bench_xml_delim_3(b, |hs| hs.find(&['<', '>', '&'][..]))
-}
+    fn bench_xml_delim_5<F>(b: &mut test::Bencher, f: F)
+        where F: Fn(&str) -> Option<usize>
+    {
+        let mut haystack = prefix_string();
+        haystack.push('"');
 
-#[inline(always)]
-fn bench_xml_delim_5<F>(b: &mut test::Bencher, f: F)
-    where F: Fn(&str) -> Option<usize>
-{
-    let mut haystack:String = ::std::iter::repeat("a").take(2).collect();
-    haystack.push('"');
+        b.iter(|| test::black_box(f(&haystack)));
+        b.bytes = haystack.len() as u64;
+    }
 
-    b.iter(|| test::black_box(f(&haystack)));
-    b.bytes = haystack.len() as u64;
-}
+    #[bench]
+    fn xml_delim_5_assembly(b: &mut test::Bencher) {
+        bench_xml_delim_5(b, |hs| find_xml_delim_5(hs))
+    }
 
-#[bench]
-fn xml_delim_5_assembly_5mb(b: &mut test::Bencher) {
-    bench_xml_delim_5(b, |hs| find_xml_delim_5(hs))
-}
-
-#[bench]
-fn xml_delim_5_find_char_set_5mb(b: &mut test::Bencher) {
-    bench_xml_delim_5(b, |hs| hs.find(&['<', '>', '&', '\'', '"'][..]))
+    #[bench]
+    fn xml_delim_5_find_char_set(b: &mut test::Bencher) {
+        bench_xml_delim_5(b, |hs| hs.find(&['<', '>', '&', '\'', '"'][..]))
+    }
 }
