@@ -1,17 +1,21 @@
 #![feature(test)]
 #![feature(asm)]
+#![feature(core)]
 
-struct ByteSearch {
-    needle: u64,
-    count: u8,
+use std::str::pattern::{Pattern,Searcher,SearchStep};
+
+#[derive(Debug,Copy,Clone)]
+pub struct ByteSearch {
+    pub needle: u64,
+    pub count: u8,
 }
 
 impl ByteSearch {
-    fn new() -> ByteSearch {
+    pub fn new() -> ByteSearch {
         ByteSearch { needle: 0, count: 0 }
     }
 
-    fn push(&mut self, byte: u8) {
+    pub fn push(&mut self, byte: u8) {
         assert!(self.count < 8);
         self.needle <<= 8;
         self.needle |= byte as u64;
@@ -19,24 +23,46 @@ impl ByteSearch {
     }
 }
 
-const SPACE: u64 = b' ' as u64;
-const XML_DELIM_3: u64 = (b'<' as u64) << 16 | (b'>' as u64) << 8 | b'&' as u64;
-const XML_DELIM_5: u64 = 0x3c3e262722;
-
-fn find_space(haystack: &str) -> Option<usize> {
-    find(haystack, SPACE, 1)
+#[derive(Debug,Copy,Clone)]
+pub struct ByteSearcher<'a> {
+    haystack: &'a str,
+    offset: usize,
+    needle: ByteSearch,
 }
 
-fn find_xml_delim_3(haystack: &str) -> Option<usize> {
-    find(haystack, XML_DELIM_3, 3)
+impl<'a> Pattern<'a> for ByteSearch {
+    type Searcher = ByteSearcher<'a>;
+
+    fn into_searcher(self, haystack: &'a str) -> ByteSearcher<'a> {
+        ByteSearcher { haystack: haystack, offset: 0, needle: self }
+    }
 }
 
-fn find_xml_delim_5(haystack: &str) -> Option<usize> {
-    find(haystack, XML_DELIM_5, 5)
+unsafe impl<'a> Searcher<'a> for ByteSearcher<'a> {
+    fn haystack(&self) -> &'a str { self.haystack }
+
+    #[inline]
+    fn next(&mut self) -> SearchStep {
+        if self.offset >= self.haystack.len() { return SearchStep::Done }
+
+        let left_to_search = &self.haystack[self.offset..]; // TODO: unchecked_slice?
+        let idx = find(left_to_search, self.needle);
+
+        let next_offset = idx.unwrap_or(self.haystack.len());
+
+        let (res, next_offset) = if next_offset == 0 {
+            (SearchStep::Match(self.offset, self.offset + 1), self.offset + 1)
+        } else {
+            (SearchStep::Reject(self.offset, next_offset), next_offset)
+        };
+
+        self.offset = next_offset;
+        res
+    }
 }
 
 #[inline(never)]
-fn find(haystack: &str, needle: u64, needle_len: u8) -> Option<usize> {
+fn find(haystack: &str, needle: ByteSearch) -> Option<usize> {
     let haystack = haystack.as_bytes();
 
     let ptr = haystack.as_ptr();
@@ -45,6 +71,21 @@ fn find(haystack: &str, needle: u64, needle_len: u8) -> Option<usize> {
 
     let mut res: usize;
 
+    // Zero-length strings have a pointer set to 0x1. Even though the
+    // length is zero, we still trigger a bad access exception. I
+    // think this indicates that the instruction reads in 16 bytes
+    // worth of memory at a time, regardless of the length instruction.
+    //
+    // This could also be an indication of a subtle bug, where we
+    // might trigger access violations if we are near the end of a
+    // page. See the comment by Renat Saifutdinov on
+    // http://www.strchr.com/strcmp_and_strlen_using_sse_4.2
+    // It is suggested to use an "aligned read with mask false bits"
+    // to avoid the problem.
+    //
+    // We don't do this yet.
+    if len == 0 { return None }
+
     loop {
         unsafe {
             asm!("pcmpestri $$0, ($1, $5), $2"
@@ -52,9 +93,9 @@ fn find(haystack: &str, needle: u64, needle_len: u8) -> Option<usize> {
                  "={ecx}"(res)
                  : // input operands
                  "r"(ptr),
-                 "x"(needle),
+                 "x"(needle.needle),
                  "{rdx}"(len),
-                 "{rax}"(needle_len),
+                 "{rax}"(needle.count),
                  "r"(offset)
                  : // clobbers
                  : // options
@@ -76,30 +117,51 @@ fn find(haystack: &str, needle: u64, needle_len: u8) -> Option<usize> {
     }
 }
 
-fn main() {
-    let mut bs = ByteSearch::new();
-    bs.push(b'<');
-    bs.push(b'>');
-    bs.push(b'&');
-    bs.push(b'\'');
-    bs.push(b'"');
-    println!("{:x}, {}", bs.needle, bs.count);
-
-    let res = find_space("hello world");
-    println!("Found a space at {:?}", res);
-}
-
 #[cfg(test)]
 mod test {
     extern crate quickcheck;
 
-    use super::{find_space,find_xml_delim_3,find_xml_delim_5};
+    use super::ByteSearch;
     use self::quickcheck::quickcheck;
+
+    pub const SPACE: ByteSearch       = ByteSearch { needle: 0x0000000000000020, count: 1 };
+    // < > &
+    pub const XML_DELIM_3: ByteSearch = ByteSearch { needle: 0x00000000003c3e26, count: 3 };
+    // < > & ' "
+    pub const XML_DELIM_5: ByteSearch = ByteSearch { needle: 0x0000003c3e262722, count: 5 };
+
+    pub fn find_space(haystack: &str) -> Option<usize> {
+        super::find(haystack, SPACE)
+    }
+
+    pub fn find_xml_delim_3(haystack: &str) -> Option<usize> {
+        super::find(haystack, XML_DELIM_3)
+    }
+
+    pub fn find_xml_delim_5(haystack: &str) -> Option<usize> {
+        super::find(haystack, XML_DELIM_5)
+    }
 
     #[test]
     fn works_as_find_does_for_single_character() {
         fn prop(s: String) -> bool {
             find_space(&s) == s.find(' ')
+        }
+        quickcheck(prop as fn(String) -> bool);
+    }
+
+    #[test]
+    fn works_as_find_does_for_single_character2() {
+        fn prop(s: String) -> bool {
+            s.find(SPACE) == s.find(' ')
+        }
+        quickcheck(prop as fn(String) -> bool);
+    }
+
+    #[test]
+    fn works_as_find_does_for_single_character3() {
+        fn prop(s: String) -> bool {
+            s.find(SPACE) == find_space(&s)
         }
         quickcheck(prop as fn(String) -> bool);
     }
@@ -181,7 +243,7 @@ mod test {
 mod bench {
     extern crate test;
 
-    use super::{find_space,find_xml_delim_3,find_xml_delim_5};
+    use super::test::{find_space,find_xml_delim_3,find_xml_delim_5};
     use std::iter;
 
     fn prefix_string() -> String {
