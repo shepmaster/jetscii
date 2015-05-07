@@ -132,6 +132,10 @@ mod test {
     use std::str::pattern::{Pattern,Searcher,SearchStep};
 
     pub const SPACE: ByteSearch       = ByteSearch { needle: 0x0000000000000020, count: 1 };
+    // a
+    pub const VOWEL: ByteSearch       = ByteSearch { needle: 0x0000000000000061, count: 1 };
+    // a e i o u
+    pub const VOWELS: ByteSearch      = ByteSearch { needle: 0x0000006165696f75, count: 5 };
     // < > &
     pub const XML_DELIM_3: ByteSearch = ByteSearch { needle: 0x00000000003c3e26, count: 3 };
     // < > & ' "
@@ -139,16 +143,18 @@ mod test {
 
     #[test]
     fn works_as_find_does_for_single_characters() {
+        // Quickcheck currently only generates Strings with A-Z, a-z, 0-9
         fn prop(s: String) -> bool {
-            s.find(SPACE) == s.find(' ')
+            s.find(VOWEL) == s.find('a')
         }
         quickcheck(prop as fn(String) -> bool);
     }
 
     #[test]
     fn works_as_find_does_for_multiple_characters() {
+        // Quickcheck currently only generates Strings with A-Z, a-z, 0-9
         fn prop(s: String) -> bool {
-            s.find(XML_DELIM_5) == s.find(&['<', '>', '&', '\'', '"'][..])
+            s.find(VOWELS) == s.find(&['a', 'e', 'i', 'o', 'u'][..])
         }
         quickcheck(prop as fn(String) -> bool);
     }
