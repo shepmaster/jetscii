@@ -293,6 +293,11 @@ mod bench {
         bench_space(b, |hs| hs.as_bytes().iter().position(|&v| v == b' '))
     }
 
+    #[bench]
+    fn space_find_closure(b: &mut test::Bencher) {
+        bench_space(b, |hs| hs.find(|c| c == ' '))
+    }
+
     fn bench_xml_delim_3<F>(b: &mut test::Bencher, f: F)
         where F: Fn(&str) -> Option<usize>
     {
@@ -314,8 +319,22 @@ mod bench {
     }
 
     #[bench]
+    fn xml_delim_3_find_byte_closure(b: &mut test::Bencher) {
+        bench_xml_delim_3(b, |hs| hs.as_bytes().iter().position(|&c| {
+            c == b'<' || c == b'>' || c == b'&'
+        }))
+    }
+
+    #[bench]
     fn xml_delim_3_find_char_set(b: &mut test::Bencher) {
         bench_xml_delim_3(b, |hs| hs.find(&['<', '>', '&'][..]))
+    }
+
+    #[bench]
+    fn xml_delim_3_find_char_closure(b: &mut test::Bencher) {
+        bench_xml_delim_3(b, |hs| hs.find(|c| {
+            c == '<' || c == '>' || c == '&'
+        }))
     }
 
     fn bench_xml_delim_5<F>(b: &mut test::Bencher, f: F)
@@ -339,7 +358,21 @@ mod bench {
     }
 
     #[bench]
+    fn xml_delim_5_find_byte_closure(b: &mut test::Bencher) {
+        bench_xml_delim_3(b, |hs| hs.as_bytes().iter().position(|&c| {
+            c == b'<' || c == b'>' || c == b'&' || c == b'\'' || c == b'"'
+        }))
+    }
+
+    #[bench]
     fn xml_delim_5_find_char_set(b: &mut test::Bencher) {
         bench_xml_delim_5(b, |hs| hs.find(&['<', '>', '&', '\'', '"'][..]))
+    }
+
+    #[bench]
+    fn xml_delim_5_find_char_closure(b: &mut test::Bencher) {
+        bench_xml_delim_5(b, |hs| hs.find(|c| {
+            c == '<' || c == '>' || c == '&' || c == '\'' || c == '"'
+        }))
     }
 }
