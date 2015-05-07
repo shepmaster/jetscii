@@ -2,6 +2,20 @@
 #![feature(core)]
 #![cfg_attr(test, feature(test))]
 
+//!
+//! A tiny library to efficiently search strings for ASCII characters.
+//!
+//! ## Example
+//! ```
+//! use string_search::ByteSearch;
+//! let mut search = ByteSearch::new();
+//! search.push(b'-');
+//! search.push(b':');
+//! let part_number = "86-J52:rev1";
+//! let parts: Vec<_> = part_number.split(search).collect();
+//! assert_eq!(&parts, &["86", "J52", "rev1"]);
+//! ```
+
 use std::str::pattern::{Pattern,Searcher,SearchStep};
 
 #[derive(Debug,Copy,Clone)]
