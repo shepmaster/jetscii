@@ -15,6 +15,18 @@
 //! let parts: Vec<_> = part_number.split(search).collect();
 //! assert_eq!(&parts, &["86", "J52", "rev1"]);
 //! ```
+//!
+//! For maximum performance, you can create the searcher as a constant
+//! item. Print an existing ByteSearch with the debug formatter to get
+//! the appropriate invocation:
+//!
+//! ```
+//! use string_search::ByteSearch;
+//! let search = ByteSearch { needle: 0x0000000000002d3a, count: 2 };
+//! let part_number = "86-J52:rev1";
+//! let parts: Vec<_> = part_number.split(search).collect();
+//! assert_eq!(&parts, &["86", "J52", "rev1"]);
+//! ```
 
 use std::fmt;
 use std::str::pattern::{Pattern,Searcher,SearchStep};
