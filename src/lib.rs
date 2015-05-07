@@ -16,9 +16,10 @@
 //! assert_eq!(&parts, &["86", "J52", "rev1"]);
 //! ```
 
+use std::fmt;
 use std::str::pattern::{Pattern,Searcher,SearchStep};
 
-#[derive(Debug,Copy,Clone)]
+#[derive(Copy,Clone)]
 pub struct ByteSearch {
     pub needle: u64,
     pub count: u8,
@@ -90,6 +91,12 @@ impl ByteSearch {
                 return Some(res + offset);
             }
         }
+    }
+}
+
+impl fmt::Debug for ByteSearch {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "ByteSearch {{ needle: 0x{:016x}, count: {} }}", self.needle, self.count)
     }
 }
 
