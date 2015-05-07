@@ -104,12 +104,18 @@ unsafe impl<'a> Searcher<'a> for ByteSearcher<'a> {
         let left_to_search = &self.haystack[self.offset..]; // TODO: unchecked_slice?
         let idx = self.needle.find(left_to_search);
 
-        let next_offset = idx.unwrap_or(self.haystack.len());
+        // If there's no match, then the rest of the string should be
+        // returned.
+        let idx = idx.unwrap_or(self.haystack.len());
 
-        let (res, next_offset) = if next_offset == 0 {
-            (SearchStep::Match(self.offset, self.offset + 1), self.offset + 1)
+        let (res, next_offset) = if idx == 0 {
+            // A match occurs at the beginning of the string
+            let next = self.offset + 1;
+            (SearchStep::Match(self.offset, next), next)
         } else {
-            (SearchStep::Reject(self.offset, next_offset), next_offset)
+            // A match occurs somewhere further in the string
+            let next = self.offset + idx;
+            (SearchStep::Reject(self.offset, next), next)
         };
 
         self.offset = next_offset;
@@ -123,6 +129,7 @@ mod test {
 
     use super::ByteSearch;
     use self::quickcheck::quickcheck;
+    use std::str::pattern::{Pattern,Searcher,SearchStep};
 
     pub const SPACE: ByteSearch       = ByteSearch { needle: 0x0000000000000020, count: 1 };
     // < > &
@@ -144,6 +151,16 @@ mod test {
             s.find(XML_DELIM_5) == s.find(&['<', '>', '&', '\'', '"'][..])
         }
         quickcheck(prop as fn(String) -> bool);
+    }
+
+    #[test]
+    fn pattern_does_not_backtrack_after_first() {
+        let mut searcher = SPACE.into_searcher("hello w ");
+        assert_eq!(SearchStep::Reject(0,5), searcher.next());
+        assert_eq!(SearchStep::Match(5,6), searcher.next());
+        assert_eq!(SearchStep::Reject(6,7), searcher.next());
+        assert_eq!(SearchStep::Match(7,8), searcher.next());
+        assert_eq!(SearchStep::Done, searcher.next());
     }
 
     #[test]
