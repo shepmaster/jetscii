@@ -1,6 +1,6 @@
-#![feature(test)]
 #![feature(asm)]
 #![feature(core)]
+#![cfg_attr(test, feature(test))]
 
 use std::str::pattern::{Pattern,Searcher,SearchStep};
 
