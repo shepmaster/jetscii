@@ -5,8 +5,8 @@ A tiny library to efficiently search strings for ASCII characters.
 ## Example
 
 ```rust
-use string_search::ByteSearch;
-let mut search = ByteSearch::new();
+use string_search::AsciiChars;
+let mut search = AsciiChars::new();
 search.push(b'-');
 search.push(b':');
 let part_number = "86-J52:rev1";
@@ -31,7 +31,7 @@ Searching a 5MiB string of `a`s with a single space at the end:
 
 | Method                                           | Speed     |
 |--------------------------------------------------|-----------|
-| **`str.find(ByteSearch)`**                       | 6501 MB/s |
+| **`str.find(AsciiChars)`**                       | 6501 MB/s |
 | `str.as_bytes().iter().position(|&v| v == b' ')` | 1620 MB/s |
 | `str.find(|c| c == ' ')`                         | 1090 MB/s |
 | `str.find(' ')`                                  | 1085 MB/s |
@@ -44,7 +44,7 @@ Searching a 5MiB string of `a`s with a single ampersand at the end:
 
 | Method                                           | Speed     |
 |--------------------------------------------------|-----------|
-| **`str.find(ByteSearch)`**                       | 6480 MB/s |
+| **`str.find(AsciiChars)`**                       | 6480 MB/s |
 | `str.as_bytes().iter().position(|&v| ...)`       | 1620 MB/s |
 | `str.find(|c| ...)`                              | 1022 MB/s |
 | `str.find(&['<', '>', '&'][..])`                 |  361 MB/s |

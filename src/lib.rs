@@ -7,8 +7,8 @@
 //!
 //! ## Example
 //! ```
-//! use string_search::ByteSearch;
-//! let mut search = ByteSearch::new();
+//! use string_search::AsciiChars;
+//! let mut search = AsciiChars::new();
 //! search.push(b'-');
 //! search.push(b':');
 //! let part_number = "86-J52:rev1";
@@ -17,12 +17,12 @@
 //! ```
 //!
 //! For maximum performance, you can create the searcher as a constant
-//! item. Print an existing ByteSearch with the debug formatter to get
+//! item. Print an existing AsciiChars with the debug formatter to get
 //! the appropriate invocation:
 //!
 //! ```
-//! use string_search::ByteSearch;
-//! let search = ByteSearch { needle: 0x0000000000002d3a, count: 2 };
+//! use string_search::AsciiChars;
+//! let search = AsciiChars { needle: 0x0000000000002d3a, count: 2 };
 //! let part_number = "86-J52:rev1";
 //! let parts: Vec<_> = part_number.split(search).collect();
 //! assert_eq!(&parts, &["86", "J52", "rev1"]);
@@ -34,19 +34,19 @@ use std::str::pattern::{Pattern,Searcher,SearchStep};
 /// Searches a string for a set of ASCII characters. Up to 8
 /// characters may be used.
 ///
-/// The instance variables are public to allow creating a ByteSearch
+/// The instance variables are public to allow creating a AsciiChars
 /// as a constant item. This is temporary until Rust has better
 /// compile-time function evaluation, so consider this an **unstable**
 /// interface.
 #[derive(Copy,Clone)]
-pub struct ByteSearch {
+pub struct AsciiChars {
     pub needle: u64,
     pub count: u8,
 }
 
-impl ByteSearch {
-    pub fn new() -> ByteSearch {
-        ByteSearch { needle: 0, count: 0 }
+impl AsciiChars {
+    pub fn new() -> AsciiChars {
+        AsciiChars { needle: 0, count: 0 }
     }
 
     /// Add a new ASCII character to the set to search for.
@@ -121,29 +121,29 @@ impl ByteSearch {
     }
 }
 
-impl fmt::Debug for ByteSearch {
+impl fmt::Debug for AsciiChars {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "ByteSearch {{ needle: 0x{:016x}, count: {} }}", self.needle, self.count)
+        write!(f, "AsciiChars {{ needle: 0x{:016x}, count: {} }}", self.needle, self.count)
     }
 }
 
-impl<'a> Pattern<'a> for ByteSearch {
-    type Searcher = ByteSearcher<'a>;
+impl<'a> Pattern<'a> for AsciiChars {
+    type Searcher = AsciiCharsSearcher<'a>;
 
-    fn into_searcher(self, haystack: &'a str) -> ByteSearcher<'a> {
-        ByteSearcher { haystack: haystack, offset: 0, needle: self }
+    fn into_searcher(self, haystack: &'a str) -> AsciiCharsSearcher<'a> {
+        AsciiCharsSearcher { haystack: haystack, offset: 0, needle: self }
     }
 }
 
-/// An implementation of `Searcher` using `ByteSearch`
+/// An implementation of `Searcher` using `AsciiChars`
 #[derive(Debug,Copy,Clone)]
-pub struct ByteSearcher<'a> {
+pub struct AsciiCharsSearcher<'a> {
     haystack: &'a str,
     offset: usize,
-    needle: ByteSearch,
+    needle: AsciiChars,
 }
 
-unsafe impl<'a> Searcher<'a> for ByteSearcher<'a> {
+unsafe impl<'a> Searcher<'a> for AsciiCharsSearcher<'a> {
     fn haystack(&self) -> &'a str { self.haystack }
 
     #[inline]
@@ -176,19 +176,19 @@ unsafe impl<'a> Searcher<'a> for ByteSearcher<'a> {
 mod test {
     extern crate quickcheck;
 
-    use super::ByteSearch;
+    use super::AsciiChars;
     use self::quickcheck::quickcheck;
     use std::str::pattern::{Pattern,Searcher,SearchStep};
 
-    pub const SPACE: ByteSearch       = ByteSearch { needle: 0x0000000000000020, count: 1 };
+    pub const SPACE: AsciiChars       = AsciiChars { needle: 0x0000000000000020, count: 1 };
     // a
-    pub const VOWEL: ByteSearch       = ByteSearch { needle: 0x0000000000000061, count: 1 };
+    pub const VOWEL: AsciiChars       = AsciiChars { needle: 0x0000000000000061, count: 1 };
     // a e i o u
-    pub const VOWELS: ByteSearch      = ByteSearch { needle: 0x0000006165696f75, count: 5 };
+    pub const VOWELS: AsciiChars      = AsciiChars { needle: 0x0000006165696f75, count: 5 };
     // < > &
-    pub const XML_DELIM_3: ByteSearch = ByteSearch { needle: 0x00000000003c3e26, count: 3 };
+    pub const XML_DELIM_3: AsciiChars = AsciiChars { needle: 0x00000000003c3e26, count: 3 };
     // < > & ' "
-    pub const XML_DELIM_5: ByteSearch = ByteSearch { needle: 0x0000003c3e262722, count: 5 };
+    pub const XML_DELIM_5: AsciiChars = AsciiChars { needle: 0x0000003c3e262722, count: 5 };
 
     #[test]
     fn works_as_find_does_for_single_characters() {
