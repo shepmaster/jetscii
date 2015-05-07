@@ -31,6 +31,13 @@
 use std::fmt;
 use std::str::pattern::{Pattern,Searcher,SearchStep};
 
+/// Searches a string for a set of ASCII characters. Up to 8
+/// characters may be used.
+///
+/// The instance variables are public to allow creating a ByteSearch
+/// as a constant item. This is temporary until Rust has better
+/// compile-time function evaluation, so consider this an **unstable**
+/// interface.
 #[derive(Copy,Clone)]
 pub struct ByteSearch {
     pub needle: u64,
@@ -42,13 +49,21 @@ impl ByteSearch {
         ByteSearch { needle: 0, count: 0 }
     }
 
+    /// Add a new ASCII character to the set to search for.
+    ///
+    /// ### Panics
+    ///
+    /// - If you add more than 8 characters.
+    /// - If you add a non-ASCII byte.
     pub fn push(&mut self, byte: u8) {
+        assert!(byte < 128);
         assert!(self.count < 8);
         self.needle <<= 8;
         self.needle |= byte as u64;
         self.count += 1;
     }
 
+    /// Find the index of the first character in the set.
     #[inline]
     pub fn find(self, haystack: &str) -> Option<usize> {
         let haystack = haystack.as_bytes();
@@ -120,6 +135,7 @@ impl<'a> Pattern<'a> for ByteSearch {
     }
 }
 
+/// An implementation of `Searcher` using `ByteSearch`
 #[derive(Debug,Copy,Clone)]
 pub struct ByteSearcher<'a> {
     haystack: &'a str,
