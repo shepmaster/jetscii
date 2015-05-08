@@ -2,6 +2,10 @@
 
 A tiny library to efficiently search strings for ASCII characters.
 
+[![Build Status](https://travis-ci.org/shepmaster/jetscii.svg)](https://travis-ci.org/shepmaster/jetscii) [![Current Version](http://meritbadge.herokuapp.com/jetskii)](https://crates.io/crates/jetskii)
+
+[Documentation](https://shepmaster.github.io/jetscii/)
+
 ## Example
 
 ```rust

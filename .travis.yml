@@ -1,0 +1,6 @@
+language: rust
+sudo: false
+after_success: ./deploy_gh_pages.sh
+env:
+  global:
+    secure: BF379DsWAl+1abzV2ATfuYTgFe4X66qC5FntscTUR7U05s21hVZlTGamFshTz+cdLys34KFqZHyU8q/AalVrc4EMoxaCbBAjJ2dg1CXt14QRD+hGA0d5DXnGQDe2BWDfoCCGRVK3toMFpZon4IW5Bku8ytw5u7cpSue/qiO3Jqc=
