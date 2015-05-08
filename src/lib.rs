@@ -7,7 +7,7 @@
 //!
 //! ## Example
 //! ```
-//! use string_search::AsciiChars;
+//! use jetscii::AsciiChars;
 //! let mut search = AsciiChars::new();
 //! search.push(b'-');
 //! search.push(b':');
@@ -21,7 +21,7 @@
 //! the appropriate invocation:
 //!
 //! ```
-//! use string_search::AsciiChars;
+//! use jetscii::AsciiChars;
 //! let search = AsciiChars { needle: 0x0000000000002d3a, count: 2 };
 //! let part_number = "86-J52:rev1";
 //! let parts: Vec<_> = part_number.split(search).collect();

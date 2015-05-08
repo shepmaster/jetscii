@@ -1,11 +1,11 @@
-# String Search
+# Jetscii
 
 A tiny library to efficiently search strings for ASCII characters.
 
 ## Example
 
 ```rust
-use string_search::AsciiChars;
+use jetscii::AsciiChars;
 let mut search = AsciiChars::new();
 search.push(b'-');
 search.push(b':');
@@ -51,7 +51,7 @@ Searching a 5MiB string of `a`s with a single ampersand at the end:
 
 ## Contributing
 
-1. Fork it ( https://github.com/shepmaster/sxd-string-search/fork )
+1. Fork it ( https://github.com/shepmaster/jetscii/fork )
 2. Create your feature branch (`git checkout -b my-new-feature`)
 3. Add a failing test.
 4. Add code to pass the test.
