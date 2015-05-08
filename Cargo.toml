@@ -3,5 +3,15 @@ name = "jetscii"
 version = "0.1.0"
 authors = ["Jake Goulding <jake.goulding@gmail.com>"]
 
+description = "A tiny library to efficiently search strings for ASCII characters"
+readme = "README.md"
+keywords = ["string", "ascii", "search"]
+
+homepage = "https://github.com/shepmaster/jetscii"
+repository = "https://github.com/shepmaster/jetscii"
+documentation = "https://shepmaster.github.io/jetscii/"
+
+license = "MIT"
+
 [dev-dependencies]
 quickcheck = "*"
