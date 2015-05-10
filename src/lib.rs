@@ -44,6 +44,11 @@ pub struct AsciiChars {
     pub count: u8,
 }
 
+enum InitialMatch {
+    Complete(Option<usize>),
+    Incomplete(usize),
+}
+
 impl AsciiChars {
     pub fn new() -> AsciiChars {
         AsciiChars { needle: 0, count: 0 }
@@ -67,29 +72,42 @@ impl AsciiChars {
     #[inline]
     pub fn find(self, haystack: &str) -> Option<usize> {
         let haystack = haystack.as_bytes();
-
-        let ptr = haystack.as_ptr();
-        let mut offset = 0;
         let mut len = haystack.len();
 
-        let mut res: usize;
-
-        // Zero-length strings have a pointer set to 0x1. Even though the
-        // length is zero, we still trigger a bad access exception. I
-        // think this indicates that the instruction reads in 16 bytes
-        // worth of memory at a time, regardless of the length instruction.
-        //
-        // This could also be an indication of a subtle bug, where we
-        // might trigger access violations if we are near the end of a
-        // page. See the comment by Renat Saifutdinov on
-        // http://www.strchr.com/strcmp_and_strlen_using_sse_4.2
-        // It is suggested to use an "aligned read with mask false bits"
-        // to avoid the problem.
-        //
-        // We don't do this yet.
         if len == 0 { return None }
 
-        loop {
+        // The PCMPxSTRx instructions always read 16 bytes worth of
+        // data. To avoid walking off the end of a page (and
+        // potentially into a protected area), we read in 16-byte
+        // chunks aligned to the *end* of the string. The instructions
+        // handle truly unaligned access just fine; the trick lies in
+        // searching the leftover bytes at the beginning of the
+        // string.
+
+        let true_ptr = haystack.as_ptr();
+
+        // Start at the 16-byte-aligned block *before* the string data
+        // starts
+        let ptr = (true_ptr as usize & !0xF) as *const u8;
+
+        // Find where the string really starts
+        let initial_offset = true_ptr as usize & 0xF;
+        let mut offset = initial_offset;
+
+        // If the string is magically aligned, skip this extra work
+        if offset != 0 {
+            match self.search_initial_unaligned_string(ptr, offset, len) {
+                InitialMatch::Complete(result) => return result,
+                InitialMatch::Incomplete(length_of_leading_str) => {
+                    offset = 16;
+                    len -= length_of_leading_str;
+                }
+            }
+        }
+
+        while len != 0 {
+            let res: usize;
+
             unsafe {
                 asm!("pcmpestri $$0, ($1, $5), $2"
                      : // output operands
@@ -102,21 +120,68 @@ impl AsciiChars {
                      "r"(offset)
                      : // clobbers
                      : // options
-                     );
+                 );
             }
 
             // We know if it matched if the zero flag is set (or
             // unset?), we shouldn't need to test res...
             if res == 16 {
-                if len <= 16 {
-                    return None;
-                }
-
                 offset += 16;
-                len -= 16;
+                len = len.saturating_sub(16);
             } else {
-                return Some(res + offset);
+                return Some(res + offset - initial_offset);
             }
+        }
+
+        None
+    }
+
+    #[inline]
+    fn search_initial_unaligned_string(&self, ptr: *const u8, offset: usize, len: usize) -> InitialMatch {
+        // We use the PCMPESTRM instruction on the 16-byte-aligned
+        // block that contains the *start* of the string. This returns
+        // a mask of all the matching characters. We can can then
+        // ignore unrelated leading bits to find the index of the
+        // first related character (if any).
+
+        let matching_bytes: usize;
+
+        unsafe {
+            asm!("pcmpestrm $$0, ($1), $2;"
+                 : // output operands
+                 "={xmm0}"(matching_bytes)
+                 : // input operands
+                 "r"(ptr),
+                 "x"(self.needle),
+                 "{rdx}"(16),
+                 "{rax}"(self.count)
+                 : // clobbers
+                 : // options
+            );
+        }
+
+        // Ignore matches that occurred before our string began
+        let matching_bytes = matching_bytes >> offset;
+
+        if matching_bytes != 0 {
+            // Matched somewhere in there, pull out the index
+            let index = matching_bytes.trailing_zeros() as usize;
+
+            if index > len {
+                // We matched, but not within our own string
+                return InitialMatch::Complete(None);
+            } else {
+                return InitialMatch::Complete(Some(index));
+            }
+        }
+
+        let length_of_leading_str = 16 - offset;
+
+        if len < length_of_leading_str {
+            // We've searched the entire string
+            InitialMatch::Complete(None)
+        } else {
+            InitialMatch::Incomplete(length_of_leading_str)
         }
     }
 }
@@ -272,6 +337,34 @@ mod test {
         assert_eq!(None, SPACE.find("0123456789ABCDE"));
         assert_eq!(None, SPACE.find("0123456789ABCDEF"));
         assert_eq!(None, SPACE.find("0123456789ABCDEFG"));
+    }
+
+    #[test]
+    fn works_on_nonaligned_beginnings() {
+        // We have special code for strings that don't lie on 16-byte
+        // boundaries. Since allocation seems to happen on these
+        // boundaries by default, let's walk around a bit.
+
+        let s = "0123456789ABCDEF ".to_string();
+
+        assert_eq!(Some(16), SPACE.find(&s[ 0..]));
+        assert_eq!(Some(15), SPACE.find(&s[ 1..]));
+        assert_eq!(Some(14), SPACE.find(&s[ 2..]));
+        assert_eq!(Some(13), SPACE.find(&s[ 3..]));
+        assert_eq!(Some(12), SPACE.find(&s[ 4..]));
+        assert_eq!(Some(11), SPACE.find(&s[ 5..]));
+        assert_eq!(Some(10), SPACE.find(&s[ 6..]));
+        assert_eq!(Some(9),  SPACE.find(&s[ 7..]));
+        assert_eq!(Some(8),  SPACE.find(&s[ 8..]));
+        assert_eq!(Some(7),  SPACE.find(&s[ 9..]));
+        assert_eq!(Some(6),  SPACE.find(&s[10..]));
+        assert_eq!(Some(5),  SPACE.find(&s[11..]));
+        assert_eq!(Some(4),  SPACE.find(&s[12..]));
+        assert_eq!(Some(3),  SPACE.find(&s[13..]));
+        assert_eq!(Some(2),  SPACE.find(&s[14..]));
+        assert_eq!(Some(1),  SPACE.find(&s[15..]));
+        assert_eq!(Some(0),  SPACE.find(&s[16..]));
+        assert_eq!(None,     SPACE.find(&s[17..]));
     }
 
     #[test]
