@@ -513,12 +513,12 @@ mod bench {
     }
 
     #[bench]
-    fn space_assembly(b: &mut test::Bencher) {
+    fn space_asciichars(b: &mut test::Bencher) {
         bench_space(b, |hs| SPACE.find(hs))
     }
 
     #[bench]
-    fn space_assembly_as_pattern(b: &mut test::Bencher) {
+    fn space_asciichars_as_pattern(b: &mut test::Bencher) {
         bench_space(b, |hs| hs.find(SPACE))
     }
 
@@ -558,12 +558,12 @@ mod bench {
     }
 
     #[bench]
-    fn xml_delim_3_assembly(b: &mut test::Bencher) {
+    fn xml_delim_3_asciichars(b: &mut test::Bencher) {
         bench_xml_delim_3(b, |hs| XML_DELIM_3.find(hs))
     }
 
     #[bench]
-    fn xml_delim_3_assembly_as_pattern(b: &mut test::Bencher) {
+    fn xml_delim_3_asciichars_as_pattern(b: &mut test::Bencher) {
         bench_xml_delim_3(b, |hs| hs.find(XML_DELIM_3))
     }
 
@@ -597,12 +597,12 @@ mod bench {
     }
 
     #[bench]
-    fn xml_delim_5_assembly(b: &mut test::Bencher) {
+    fn xml_delim_5_asciichars(b: &mut test::Bencher) {
         bench_xml_delim_5(b, |hs| XML_DELIM_5.find(hs))
     }
 
     #[bench]
-    fn xml_delim_5_assembly_as_pattern(b: &mut test::Bencher) {
+    fn xml_delim_5_asciichars_as_pattern(b: &mut test::Bencher) {
         bench_xml_delim_5(b, |hs| hs.find(XML_DELIM_5))
     }
 
