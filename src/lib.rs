@@ -294,6 +294,11 @@ mod test {
         assert_eq!(None,    XML_DELIM_5.find(""));
     }
 
+    #[cfg(target_os = "macos")]
+    const MAP_ANONYMOUS: libc::int32_t = libc::MAP_ANON;
+    #[cfg(not(target_os = "macos"))]
+    const MAP_ANONYMOUS: libc::int32_t = libc::MAP_ANONYMOUS;
+
     unsafe fn alloc_guarded_string(value: &str, protect: bool) -> &'static str {
         // Allocate a (leaked) pointer to a copy of value with protected end,
         // i.e. returned copy is guaranteed to be aligned to page end,
@@ -314,7 +319,7 @@ mod test {
             /* addr   = */ 0 as *mut libc::c_void,
             /* length = */ 2 * PAGE_SIZE as libc::size_t,
             /* prot   = */ libc::PROT_READ | libc::PROT_WRITE,
-            /* flags  = */ libc::MAP_PRIVATE | libc::MAP_ANONYMOUS,
+            /* flags  = */ libc::MAP_PRIVATE | MAP_ANONYMOUS,
             /* fd     = */ -1,
             /* offset = */ 0,
         );
