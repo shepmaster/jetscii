@@ -1,6 +1,6 @@
 #![feature(asm)]
 #![feature(core)]
-#![cfg_attr(test, feature(test))]
+#![cfg_attr(test, feature(test, libc, collections))]
 
 //!
 //! A tiny library to efficiently search strings for ASCII characters.
@@ -175,10 +175,14 @@ unsafe impl<'a> Searcher<'a> for AsciiCharsSearcher<'a> {
 #[cfg(test)]
 mod test {
     extern crate quickcheck;
+    extern crate libc;
+    extern crate core;
 
     use super::AsciiChars;
     use self::quickcheck::quickcheck;
     use std::str::pattern::{Pattern,Searcher,SearchStep};
+    use std::slice;
+    use std::str;
 
     pub const SPACE: AsciiChars       = AsciiChars { needle: 0x0000000000000020, count: 1 };
     // a
@@ -288,6 +292,77 @@ mod test {
         assert_eq!(Some(0), XML_DELIM_5.find("'"));
         assert_eq!(Some(0), XML_DELIM_5.find("\""));
         assert_eq!(None,    XML_DELIM_5.find(""));
+    }
+
+    unsafe fn alloc_guarded_string(value: &str, protect: bool) -> &'static str {
+        // Allocate a (leaked) pointer to a copy of value with protected end,
+        // i.e. returned copy is guaranteed to be aligned to page end,
+        // while the memory directly after its end is read-protected
+        //
+        // Allocated memory is not freed (memory is leaked two pages per call),
+        // though it's acceptable for use in tests only.
+
+        use std::raw::Repr;
+
+        const PAGE_SIZE: usize = 4096;
+
+        let repr = value.repr();
+        assert!(repr.len <= PAGE_SIZE);
+
+        // Map two rw-accessible pages of anonymous memory
+        let first_page = libc::mmap(
+            /* addr   = */ 0 as *mut libc::c_void,
+            /* length = */ 2 * PAGE_SIZE as libc::size_t,
+            /* prot   = */ libc::PROT_READ | libc::PROT_WRITE,
+            /* flags  = */ libc::MAP_PRIVATE | libc::MAP_ANONYMOUS,
+            /* fd     = */ -1,
+            /* offset = */ 0,
+        );
+        assert!(!first_page.is_null());
+
+        let second_page = first_page.offset(PAGE_SIZE as isize);
+
+        if protect {
+            // Prohibit any access to the second page, so that any attempt
+            // to read or write it would trigger a segfault
+            let mprotect_retval = libc::mprotect(
+                /* addr   = */ second_page,
+                /* length = */ PAGE_SIZE as libc::size_t,
+                /* prot   = */ libc::PROT_NONE,
+            );
+            assert_eq!(0, mprotect_retval);
+        }
+
+        // Copy bytes to the end of the first page
+        let start = first_page.offset((PAGE_SIZE - repr.len) as isize) as *mut u8;
+        self::core::intrinsics::copy(repr.data, start, repr.len);
+        str::from_utf8_unchecked(slice::from_raw_parts(start, repr.len))
+    }
+
+    #[test]
+    fn works_at_page_boundary() {
+        // PCMP*STR instructions are known to read 16 bytes at a time.
+        // This behaviour may cause accidental segfaults by reading
+        // past page boundary.
+        //
+        // For now, this test crashes the whole test suite.
+        // This could be fixed by setting a custom signal handlers,
+        // though Rust lacks such facilities ATM.
+
+        // Allocate a 16-byte string at page boundary.
+        // To verify this test, set protect=false, that would prevent segfaults.
+        let text = unsafe {alloc_guarded_string("0123456789abcdef", true)};
+
+        // Will search for the last char
+        let mut needle = AsciiChars::new();
+        needle.push(b'f');
+
+        // Check all suffixes of our 16-byte string
+        for offset in 0..text.len() {
+            println!("Testing END{:?}", offset);
+            let tail = text.slice_chars(offset, text.len());
+            assert_eq!(Some(tail.len() - 1), needle.find(tail));
+        }
     }
 }
 
