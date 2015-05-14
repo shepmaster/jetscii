@@ -1,5 +1,13 @@
 language: rust
 sudo: false
+rust:
+  - nightly
+env:
+  - FEATURES=""
+  - FEATURES="unstable"
+script: |
+  cargo build --verbose --features "${FEATURES}"
+  cargo test --verbose --features "${FEATURES}"
 after_success: "./deploy_gh_pages.sh"
 env:
   global:
