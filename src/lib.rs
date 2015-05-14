@@ -241,38 +241,54 @@ unsafe impl<'a> Searcher<'a> for AsciiCharsSearcher<'a> {
 mod test {
     extern crate quickcheck;
     extern crate libc;
+    extern crate rand;
 
     use super::AsciiChars;
-    use self::quickcheck::quickcheck;
+    use self::rand::Rng;
+    use self::quickcheck::{quickcheck,Arbitrary,Gen};
     use std::str::pattern::{Pattern,Searcher,SearchStep};
     use std::{slice,str,ptr};
 
     pub const SPACE: AsciiChars       = AsciiChars { needle: 0x0000000000000020, count: 1 };
-    // a
-    pub const VOWEL: AsciiChars       = AsciiChars { needle: 0x0000000000000061, count: 1 };
-    // a e i o u
-    pub const VOWELS: AsciiChars      = AsciiChars { needle: 0x0000006165696f75, count: 5 };
     // < > &
     pub const XML_DELIM_3: AsciiChars = AsciiChars { needle: 0x00000000003c3e26, count: 3 };
     // < > & ' "
     pub const XML_DELIM_5: AsciiChars = AsciiChars { needle: 0x0000003c3e262722, count: 5 };
 
+    #[derive(Debug,Copy,Clone)]
+    struct AsciiChar(u8);
+
+    impl Arbitrary for AsciiChar {
+        fn arbitrary<G>(g: &mut G) -> AsciiChar
+            where G: Gen
+        {
+            AsciiChar(g.gen_range(0, 128))
+        }
+    }
+
     #[test]
     fn works_as_find_does_for_single_characters() {
         // Quickcheck currently only generates Strings with A-Z, a-z, 0-9
-        fn prop(s: String) -> bool {
-            s.find(VOWEL) == s.find('a')
+        fn prop(s: String, c: AsciiChar) -> bool {
+            let mut searcher = AsciiChars::new();
+            searcher.push(c.0);
+            s.find(searcher) == s.find(c.0 as char)
         }
-        quickcheck(prop as fn(String) -> bool);
+        quickcheck(prop as fn(String, AsciiChar) -> bool);
     }
 
     #[test]
     fn works_as_find_does_for_multiple_characters() {
         // Quickcheck currently only generates Strings with A-Z, a-z, 0-9
-        fn prop(s: String) -> bool {
-            s.find(VOWELS) == s.find(&['a', 'e', 'i', 'o', 'u'][..])
+        fn prop(s: String, (c1, c2, c3, c4): (AsciiChar, AsciiChar, AsciiChar, AsciiChar)) -> bool {
+            let mut searcher = AsciiChars::new();
+            searcher.push(c1.0);
+            searcher.push(c2.0);
+            searcher.push(c3.0);
+            searcher.push(c4.0);
+            s.find(searcher) == s.find(&[c1.0 as char, c2.0 as char, c3.0 as char, c4.0 as char][..])
         }
-        quickcheck(prop as fn(String) -> bool);
+        quickcheck(prop as fn(String, (AsciiChar, AsciiChar, AsciiChar, AsciiChar)) -> bool);
     }
 
     #[test]

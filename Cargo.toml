@@ -16,3 +16,4 @@ license = "MIT"
 [dev-dependencies]
 quickcheck = "*"
 libc = "*"
+rand = "*"
