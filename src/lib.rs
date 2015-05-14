@@ -292,6 +292,23 @@ mod test {
     }
 
     #[test]
+    fn can_search_for_nul_bytes() {
+        let mut s = AsciiChars::new();
+        s.push(b'\0');
+        assert_eq!(Some(1), "a\0".find(s));
+        assert_eq!(Some(0), "\0".find(s));
+        assert_eq!(None, "".find(s));
+    }
+
+    #[test]
+    fn can_search_in_nul_bytes() {
+        let mut s = AsciiChars::new();
+        s.push(b'a');
+        assert_eq!(Some(1), "\0a".find(s));
+        assert_eq!(None, "\0".find(s));
+    }
+
+    #[test]
     fn pattern_does_not_backtrack_after_first() {
         let mut searcher = SPACE.into_searcher("hello w ");
         assert_eq!(SearchStep::Reject(0,5), searcher.next());
