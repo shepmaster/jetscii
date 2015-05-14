@@ -35,7 +35,7 @@ Searching a 5MiB string of `a`s with a single space at the end:
 
 | Method                                           | Speed     |
 |--------------------------------------------------|-----------|
-| **`str.find(AsciiChars)`**                       | 6501 MB/s |
+| **`str.find(AsciiChars)`**                       | 5719 MB/s |
 | `str.as_bytes().iter().position(|&v| v == b' ')` | 1620 MB/s |
 | `str.find(|c| c == ' ')`                         | 1090 MB/s |
 | `str.find(' ')`                                  | 1085 MB/s |
@@ -48,7 +48,7 @@ Searching a 5MiB string of `a`s with a single ampersand at the end:
 
 | Method                                           | Speed     |
 |--------------------------------------------------|-----------|
-| **`str.find(AsciiChars)`**                       | 6480 MB/s |
+| **`str.find(AsciiChars)`**                       | 5688 MB/s |
 | `str.as_bytes().iter().position(|&v| ...)`       | 1620 MB/s |
 | `str.find(|c| ...)`                              | 1022 MB/s |
 | `str.find(&['<', '>', '&'][..])`                 |  361 MB/s |
