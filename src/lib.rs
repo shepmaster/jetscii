@@ -12,19 +12,23 @@
 //! search.push(b'-');
 //! search.push(b':');
 //! let part_number = "86-J52:rev1";
-//! let parts: Vec<_> = part_number.split(search).collect();
+//! let parts: Vec<_> = part_number.split(search.with_fallback(|c| {
+//!     c == b'-' || c == b':'
+//! })).collect();
 //! assert_eq!(&parts, &["86", "J52", "rev1"]);
 //! ```
 //!
 //! For maximum performance, you can create the searcher as a constant
-//! item. Print an existing AsciiChars with the debug formatter to get
-//! the appropriate invocation:
+//! item. Print an existing `AsciiChars` with the debug formatter to
+//! get the appropriate invocation.
 //!
 //! ```
 //! use jetscii::AsciiChars;
 //! let search = AsciiChars { needle: 0x0000000000002d3a, count: 2 };
 //! let part_number = "86-J52:rev1";
-//! let parts: Vec<_> = part_number.split(search).collect();
+//! let parts: Vec<_> = part_number.split(search.with_fallback(|c| {
+//!     c == b'-' || c == b':'
+//! })).collect();
 //! assert_eq!(&parts, &["86", "J52", "rev1"]);
 //! ```
 
@@ -44,6 +48,7 @@ pub struct AsciiChars {
     pub count: u8,
 }
 
+#[cfg(all(feature = "unstable", target_arch = "x86_64"))]
 enum InitialMatch {
     Complete(Option<usize>),
     Incomplete(usize),
@@ -68,7 +73,17 @@ impl AsciiChars {
         self.count += 1;
     }
 
+    /// Builds a searcher with a fallback implementation for when the
+    /// optimized version is not available. The fallback should search
+    /// for the **exact** same set of characters.
+    pub fn with_fallback<F>(self, fallback: F) -> AsciiCharsWithFallback<F>
+        where F: Fn(u8) -> bool
+    {
+        AsciiCharsWithFallback { inner: self, fallback: fallback }
+    }
+
     /// Find the index of the first character in the set.
+    #[cfg(all(feature = "unstable", target_arch = "x86_64"))]
     #[inline]
     pub fn find(self, haystack: &str) -> Option<usize> {
         let haystack = haystack.as_bytes();
@@ -137,6 +152,7 @@ impl AsciiChars {
     }
 
     #[inline]
+    #[cfg(all(feature = "unstable", target_arch = "x86_64"))]
     fn search_initial_unaligned_string(&self, ptr: *const u8, offset: usize, len: usize) -> InitialMatch {
         // We use the PCMPESTRM instruction on the 16-byte-aligned
         // block that contains the *start* of the string. This returns
@@ -192,23 +208,52 @@ impl fmt::Debug for AsciiChars {
     }
 }
 
-impl<'a> Pattern<'a> for AsciiChars {
-    type Searcher = AsciiCharsSearcher<'a>;
+/// Provides a hook for a user-supplied fallback implementation, used
+/// when the optimized instructions are not available.
+///
+/// Although this implementation is a bit ungainly, Rust's closure
+/// inlining is top-notch and provides the best speed.
+#[derive(Debug,Copy,Clone)]
+pub struct AsciiCharsWithFallback<F> {
+    inner: AsciiChars,
+    fallback: F,
+}
 
-    fn into_searcher(self, haystack: &'a str) -> AsciiCharsSearcher<'a> {
+impl<'a, F> Pattern<'a> for AsciiCharsWithFallback<F>
+    where F: Fn(u8) -> bool
+{
+    type Searcher = AsciiCharsSearcher<'a, F>;
+
+    fn into_searcher(self, haystack: &'a str) -> AsciiCharsSearcher<'a, F> {
         AsciiCharsSearcher { haystack: haystack, offset: 0, needle: self }
     }
 }
 
 /// An implementation of `Searcher` using `AsciiChars`
 #[derive(Debug,Copy,Clone)]
-pub struct AsciiCharsSearcher<'a> {
+pub struct AsciiCharsSearcher<'a, F> {
     haystack: &'a str,
     offset: usize,
-    needle: AsciiChars,
+    needle: AsciiCharsWithFallback<F>,
 }
 
-unsafe impl<'a> Searcher<'a> for AsciiCharsSearcher<'a> {
+impl<'a, F> AsciiCharsSearcher<'a, F>
+    where F: Fn(u8) -> bool
+{
+    #[cfg(all(feature = "unstable", target_arch = "x86_64"))]
+    fn next_idx(&self, haystack: &str) -> Option<usize> {
+        self.needle.inner.find(haystack)
+    }
+
+    #[cfg(not(all(feature = "unstable", target_arch = "x86_64")))]
+    fn next_idx(&self, haystack: &str) -> Option<usize> {
+        haystack.as_bytes().iter().cloned().position(&self.needle.fallback)
+    }
+}
+
+unsafe impl<'a, F> Searcher<'a> for AsciiCharsSearcher<'a, F>
+    where F: Fn(u8) -> bool
+{
     fn haystack(&self) -> &'a str { self.haystack }
 
     #[inline]
@@ -216,7 +261,7 @@ unsafe impl<'a> Searcher<'a> for AsciiCharsSearcher<'a> {
         if self.offset >= self.haystack.len() { return SearchStep::Done }
 
         let left_to_search = &self.haystack[self.offset..]; // TODO: unchecked_slice?
-        let idx = self.needle.find(left_to_search);
+        let idx = self.next_idx(left_to_search);
 
         // If there's no match, then the rest of the string should be
         // returned.
@@ -247,6 +292,7 @@ mod test {
     use self::rand::Rng;
     use self::quickcheck::{quickcheck,Arbitrary,Gen};
     use std::str::pattern::{Pattern,Searcher,SearchStep};
+    #[cfg(all(feature = "unstable", target_arch = "x86_64"))]
     use std::{slice,str,ptr};
 
     pub const SPACE: AsciiChars       = AsciiChars { needle: 0x0000000000000020, count: 1 };
@@ -272,7 +318,7 @@ mod test {
         fn prop(s: String, c: AsciiChar) -> bool {
             let mut searcher = AsciiChars::new();
             searcher.push(c.0);
-            s.find(searcher) == s.find(c.0 as char)
+            s.find(searcher.with_fallback(|b| b == c.0)) == s.find(c.0 as char)
         }
         quickcheck(prop as fn(String, AsciiChar) -> bool);
     }
@@ -286,7 +332,7 @@ mod test {
             searcher.push(c2.0);
             searcher.push(c3.0);
             searcher.push(c4.0);
-            s.find(searcher) == s.find(&[c1.0 as char, c2.0 as char, c3.0 as char, c4.0 as char][..])
+            s.find(searcher.with_fallback(|b| b == c1.0 || b == c2.0 || b == c3.0 || b == c4.0)) == s.find(&[c1.0 as char, c2.0 as char, c3.0 as char, c4.0 as char][..])
         }
         quickcheck(prop as fn(String, (AsciiChar, AsciiChar, AsciiChar, AsciiChar)) -> bool);
     }
@@ -295,22 +341,22 @@ mod test {
     fn can_search_for_nul_bytes() {
         let mut s = AsciiChars::new();
         s.push(b'\0');
-        assert_eq!(Some(1), "a\0".find(s));
-        assert_eq!(Some(0), "\0".find(s));
-        assert_eq!(None, "".find(s));
+        assert_eq!(Some(1), "a\0".find(s.with_fallback(|b| b == b'\0')));
+        assert_eq!(Some(0), "\0".find(s.with_fallback(|b| b == b'\0')));
+        assert_eq!(None, "".find(s.with_fallback(|b| b == b'\0')));
     }
 
     #[test]
     fn can_search_in_nul_bytes() {
         let mut s = AsciiChars::new();
         s.push(b'a');
-        assert_eq!(Some(1), "\0a".find(s));
-        assert_eq!(None, "\0".find(s));
+        assert_eq!(Some(1), "\0a".find(s.with_fallback(|b| b == b'a')));
+        assert_eq!(None, "\0".find(s.with_fallback(|b| b == b'a')));
     }
 
     #[test]
     fn pattern_does_not_backtrack_after_first() {
-        let mut searcher = SPACE.into_searcher("hello w ");
+        let mut searcher = SPACE.with_fallback(|b| b == b' ').into_searcher("hello w ");
         assert_eq!(SearchStep::Reject(0,5), searcher.next());
         assert_eq!(SearchStep::Match(5,6), searcher.next());
         assert_eq!(SearchStep::Reject(6,7), searcher.next());
@@ -319,6 +365,7 @@ mod test {
     }
 
     #[test]
+    #[cfg(all(feature = "unstable", target_arch = "x86_64"))]
     fn space_is_found() {
         // Since the algorithm operates on 16-byte chunks, it's
         // important to cover tests around that boundary. Since 16
@@ -346,6 +393,7 @@ mod test {
     }
 
     #[test]
+    #[cfg(all(feature = "unstable", target_arch = "x86_64"))]
     fn space_not_found() {
         // Since the algorithm operates on 16-byte chunks, it's
         // important to cover tests around that boundary. Since 16
@@ -373,6 +421,7 @@ mod test {
     }
 
     #[test]
+    #[cfg(all(feature = "unstable", target_arch = "x86_64"))]
     fn works_on_nonaligned_beginnings() {
         // We have special code for strings that don't lie on 16-byte
         // boundaries. Since allocation seems to happen on these
@@ -401,6 +450,7 @@ mod test {
     }
 
     #[test]
+    #[cfg(all(feature = "unstable", target_arch = "x86_64"))]
     fn xml_delim_3_is_found() {
         assert_eq!(Some(0), XML_DELIM_3.find("<"));
         assert_eq!(Some(0), XML_DELIM_3.find(">"));
@@ -409,6 +459,7 @@ mod test {
     }
 
     #[test]
+    #[cfg(all(feature = "unstable", target_arch = "x86_64"))]
     fn xml_delim_5_is_found() {
         assert_eq!(Some(0), XML_DELIM_5.find("<"));
         assert_eq!(Some(0), XML_DELIM_5.find(">"));
@@ -418,11 +469,14 @@ mod test {
         assert_eq!(None,    XML_DELIM_5.find(""));
     }
 
+    #[cfg(all(feature = "unstable", target_arch = "x86_64"))]
     #[cfg(target_os = "macos")]
     const MAP_ANONYMOUS: libc::int32_t = libc::MAP_ANON;
+    #[cfg(all(feature = "unstable", target_arch = "x86_64"))]
     #[cfg(not(target_os = "macos"))]
     const MAP_ANONYMOUS: libc::int32_t = libc::MAP_ANONYMOUS;
 
+    #[cfg(all(feature = "unstable", target_arch = "x86_64"))]
     fn alloc_guarded_string(value: &str, protect: bool) -> &'static str {
         // Allocate a string that ends directly before a
         // read-protected page.
@@ -466,6 +520,7 @@ mod test {
     }
 
     #[test]
+    #[cfg(all(feature = "unstable", target_arch = "x86_64"))]
     fn works_at_page_boundary() {
         // PCMP*STR* instructions are known to read 16 bytes at a time.
         // This behaviour may cause accidental segfaults by reading
@@ -513,13 +568,14 @@ mod bench {
     }
 
     #[bench]
+    #[cfg(all(feature = "unstable", target_arch = "x86_64"))]
     fn space_asciichars(b: &mut test::Bencher) {
         bench_space(b, |hs| SPACE.find(hs))
     }
 
     #[bench]
     fn space_asciichars_as_pattern(b: &mut test::Bencher) {
-        bench_space(b, |hs| hs.find(SPACE))
+        bench_space(b, |hs| hs.find(SPACE.with_fallback(|b| b == b' ')))
     }
 
     #[bench]
@@ -558,13 +614,16 @@ mod bench {
     }
 
     #[bench]
+    #[cfg(all(feature = "unstable", target_arch = "x86_64"))]
     fn xml_delim_3_asciichars(b: &mut test::Bencher) {
         bench_xml_delim_3(b, |hs| XML_DELIM_3.find(hs))
     }
 
     #[bench]
     fn xml_delim_3_asciichars_as_pattern(b: &mut test::Bencher) {
-        bench_xml_delim_3(b, |hs| hs.find(XML_DELIM_3))
+        bench_xml_delim_3(b, |hs| hs.find(XML_DELIM_3.with_fallback(|c| {
+            c == b'<' || c == b'>' || c == b'&'
+        })))
     }
 
     #[bench]
@@ -597,13 +656,16 @@ mod bench {
     }
 
     #[bench]
+    #[cfg(all(feature = "unstable", target_arch = "x86_64"))]
     fn xml_delim_5_asciichars(b: &mut test::Bencher) {
         bench_xml_delim_5(b, |hs| XML_DELIM_5.find(hs))
     }
 
     #[bench]
     fn xml_delim_5_asciichars_as_pattern(b: &mut test::Bencher) {
-        bench_xml_delim_5(b, |hs| hs.find(XML_DELIM_5))
+        bench_xml_delim_5(b, |hs| hs.find(XML_DELIM_5.with_fallback(|c| {
+            c == b'<' || c == b'>' || c == b'&' || c == b'\'' || c == b'"'
+        })))
     }
 
     #[bench]

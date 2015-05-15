@@ -14,7 +14,9 @@ let mut search = AsciiChars::new();
 search.push(b'-');
 search.push(b':');
 let part_number = "86-J52:rev1";
-let parts: Vec<_> = part_number.split(search).collect();
+let parts: Vec<_> = part_number.split(search.with_fallback(|c| {
+    c == b'-' || c == b':'
+})).collect();
 assert_eq!(&parts, &["86", "J52", "rev1"]);
 ```
 
