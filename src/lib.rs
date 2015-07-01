@@ -1,5 +1,5 @@
 #![feature(asm)]
-#![feature(core)]
+#![feature(pattern)]
 #![cfg_attr(test, feature(test))]
 
 //!
