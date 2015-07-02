@@ -298,6 +298,7 @@ mod test {
     use self::rand::Rng;
     use self::quickcheck::{quickcheck,Arbitrary,Gen};
     use std::str::pattern::{Pattern,Searcher,SearchStep};
+    use std::cmp;
     #[cfg(all(feature = "unstable", target_arch = "x86_64"))]
     use std::{slice,str,ptr};
 
@@ -341,6 +342,23 @@ mod test {
             s.find(searcher.with_fallback(|b| b == c1.0 || b == c2.0 || b == c3.0 || b == c4.0)) == s.find(&[c1.0 as char, c2.0 as char, c3.0 as char, c4.0 as char][..])
         }
         quickcheck(prop as fn(String, (AsciiChar, AsciiChar, AsciiChar, AsciiChar)) -> bool);
+    }
+
+    #[test]
+    fn works_as_find_does_for_many_characters() {
+        // test up to 16 ascii characters
+        // Quickcheck currently only generates Strings with A-Z, a-z, 0-9
+        fn prop(s: String, v: Vec<AsciiChar>) -> bool {
+            let n = cmp::min(super::MAXBYTES as usize, v.len());
+            let mut searcher = AsciiChars::new();
+            let mut chars = ['\0'; 16];
+            for (index, &c) in v.iter().take(n).enumerate() {
+                searcher.push(c.0);
+                chars[index] = c.0 as char;
+            }
+            s.find(searcher.with_fallback(|b| chars[..n].iter().position(|&c| c == b as char).is_some())) == s.find(&chars[..n])
+        }
+        quickcheck(prop as fn(String, Vec<AsciiChar>) -> bool);
     }
 
     #[test]
