@@ -121,7 +121,7 @@ impl AsciiChars {
         }
 
         while len != 0 {
-            let res: usize;
+            let res: u32;
 
             unsafe {
                 asm!("pcmpestri $$0, ($1, $5), $2"
@@ -131,7 +131,7 @@ impl AsciiChars {
                      "r"(ptr),
                      "x"(self.needle),
                      "{rdx}"(len),
-                     "{rax}"(self.count),
+                     "{rax}"(self.count as u64),
                      "r"(offset)
                      : // clobbers
                      : // options
@@ -144,7 +144,7 @@ impl AsciiChars {
                 offset += 16;
                 len = len.saturating_sub(16);
             } else {
-                return Some(res + offset - initial_offset);
+                return Some(res as usize + offset - initial_offset);
             }
         }
 
@@ -169,8 +169,8 @@ impl AsciiChars {
                  : // input operands
                  "r"(ptr),
                  "x"(self.needle),
-                 "{rdx}"(16),
-                 "{rax}"(self.count)
+                 "{rdx}"(16u64),
+                 "{rax}"(self.count as u64)
                  : // clobbers
                  : // options
             );
