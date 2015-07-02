@@ -24,7 +24,7 @@
 //!
 //! ```
 //! use jetscii::AsciiChars;
-//! let search = AsciiChars { needle: 0x0000000000002d3a, count: 2 };
+//! let search = AsciiChars { needle: 0x0000000000002d3a, needle_hi: 0, count: 2 };
 //! let part_number = "86-J52:rev1";
 //! let parts: Vec<_> = part_number.split(search.with_fallback(|c| {
 //!     c == b'-' || c == b':'
@@ -35,7 +35,9 @@
 use std::fmt;
 use std::str::pattern::{Pattern,Searcher,SearchStep};
 
-/// Searches a string for a set of ASCII characters. Up to 8
+const MAXBYTES: u8 = 16;
+
+/// Searches a string for a set of ASCII characters. Up to 16
 /// characters may be used.
 ///
 /// The instance variables are public to allow creating a AsciiChars
@@ -45,6 +47,7 @@ use std::str::pattern::{Pattern,Searcher,SearchStep};
 #[derive(Copy,Clone)]
 pub struct AsciiChars {
     pub needle: u64,
+    pub needle_hi: u64,
     pub count: u8,
 }
 
@@ -56,18 +59,20 @@ enum InitialMatch {
 
 impl AsciiChars {
     pub fn new() -> AsciiChars {
-        AsciiChars { needle: 0, count: 0 }
+        AsciiChars { needle: 0, needle_hi: 0, count: 0 }
     }
 
     /// Add a new ASCII character to the set to search for.
     ///
     /// ### Panics
     ///
-    /// - If you add more than 8 characters.
+    /// - If you add more than 16 characters.
     /// - If you add a non-ASCII byte.
     pub fn push(&mut self, byte: u8) {
         assert!(byte < 128);
-        assert!(self.count < 8);
+        assert!(self.count < MAXBYTES);
+        self.needle_hi <<= 8;
+        self.needle_hi |= self.needle >> (64 - 8);
         self.needle <<= 8;
         self.needle |= byte as u64;
         self.count += 1;
@@ -124,16 +129,20 @@ impl AsciiChars {
             let res: u32;
 
             unsafe {
-                asm!("pcmpestri $$0, ($1, $5), $2"
+                asm!("# Move low word of $2 to high word of $1
+                      movlhps $2, $1
+                      pcmpestri $$0, ($3, $4), $1"
                      : // output operands
                      "={ecx}"(res)
                      : // input operands
-                     "r"(ptr),
                      "x"(self.needle),
-                     "{rdx}"(len),
-                     "{rax}"(self.count as u64),
+                     "x"(self.needle_hi),
+                     "r"(ptr),
                      "r"(offset)
+                     "{rdx}"(len),              // haystack length
+                     "{rax}"(self.count as u64) // needle length
                      : // clobbers
+                     "cc"
                      : // options
                  );
             }
@@ -160,35 +169,32 @@ impl AsciiChars {
         // ignore unrelated leading bits to find the index of the
         // first related character (if any).
 
-        let matching_bytes: usize;
+        let mut matching_bytes: u64;
 
         unsafe {
-            asm!("pcmpestrm $$0, ($1), $2;"
+            asm!("movlhps $2, $1
+                  pcmpestrm $$0, ($3), $1"
                  : // output operands
                  "={xmm0}"(matching_bytes)
                  : // input operands
-                 "r"(ptr),
                  "x"(self.needle),
-                 "{rdx}"(16u64),
+                 "x"(self.needle_hi),
+                 "r"(ptr),
+                 "{rdx}"(offset + len), // saturates at 16
                  "{rax}"(self.count as u64)
                  : // clobbers
+                 "cc"
                  : // options
             );
         }
 
         // Ignore matches that occurred before our string began
-        let matching_bytes = matching_bytes >> offset;
+        matching_bytes >>= offset;
 
         if matching_bytes != 0 {
-            // Matched somewhere in there, pull out the index
+            // Matched somewhere in there, find the least significant bit
             let index = matching_bytes.trailing_zeros() as usize;
-
-            if index > len {
-                // We matched, but not within our own string
-                return InitialMatch::Complete(None);
-            } else {
-                return InitialMatch::Complete(Some(index));
-            }
+            return InitialMatch::Complete(Some(index));
         }
 
         let length_of_leading_str = 16 - offset;
@@ -295,11 +301,11 @@ mod test {
     #[cfg(all(feature = "unstable", target_arch = "x86_64"))]
     use std::{slice,str,ptr};
 
-    pub const SPACE: AsciiChars       = AsciiChars { needle: 0x0000000000000020, count: 1 };
+    pub const SPACE: AsciiChars       = AsciiChars { needle: 0x0000000000000020, needle_hi: 0, count: 1 };
     // < > &
-    pub const XML_DELIM_3: AsciiChars = AsciiChars { needle: 0x00000000003c3e26, count: 3 };
+    pub const XML_DELIM_3: AsciiChars = AsciiChars { needle: 0x00000000003c3e26, needle_hi: 0, count: 3 };
     // < > & ' "
-    pub const XML_DELIM_5: AsciiChars = AsciiChars { needle: 0x0000003c3e262722, count: 5 };
+    pub const XML_DELIM_5: AsciiChars = AsciiChars { needle: 0x0000003c3e262722, needle_hi: 0, count: 5 };
 
     #[derive(Debug,Copy,Clone)]
     struct AsciiChar(u8);
