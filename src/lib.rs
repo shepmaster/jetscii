@@ -1,4 +1,5 @@
 #![feature(asm)]
+#![feature(const_fn)]
 #![feature(pattern)]
 #![cfg_attr(test, feature(test))]
 
@@ -24,7 +25,7 @@
 //!
 //! ```
 //! use jetscii::AsciiChars;
-//! let search = AsciiChars { needle: 0x0000000000002d3a, needle_hi: 0, count: 2 };
+//! let search = AsciiChars::from_words(0x0000000000002d3a, 0, 2);
 //! let part_number = "86-J52:rev1";
 //! let parts: Vec<_> = part_number.split(search.with_fallback(|c| {
 //!     c == b'-' || c == b':'
@@ -37,18 +38,16 @@ use std::str::pattern::{Pattern,Searcher,SearchStep};
 
 const MAXBYTES: u8 = 16;
 
+/// 8 ascii-only bytes
+const ASCII_WORD_MASK: u64 = 0x7f7f7f7f7f7f7f7f;
+
 /// Searches a string for a set of ASCII characters. Up to 16
 /// characters may be used.
-///
-/// The instance variables are public to allow creating a AsciiChars
-/// as a constant item. This is temporary until Rust has better
-/// compile-time function evaluation, so consider this an **unstable**
-/// interface.
 #[derive(Copy,Clone)]
 pub struct AsciiChars {
-    pub needle: u64,
-    pub needle_hi: u64,
-    pub count: u8,
+    needle: u64,
+    needle_hi: u64,
+    count: u8,
 }
 
 #[cfg(all(feature = "unstable", target_arch = "x86_64"))]
@@ -58,8 +57,26 @@ enum InitialMatch {
 }
 
 impl AsciiChars {
-    pub fn new() -> AsciiChars {
-        AsciiChars { needle: 0, needle_hi: 0, count: 0 }
+    #[inline]
+    /// Create an empty AsciiChars
+    pub const fn new() -> AsciiChars {
+        Self::from_words(0, 0, 0)
+    }
+
+    #[inline]
+    /// Create an AsciiChars with ascii bytes from `lo`, `hi`,
+    /// with `count` bytes being used.
+    pub const fn from_words(lo: u64, hi: u64, count: usize) -> AsciiChars {
+        // this is memory safe even if the user may specify a count > 16 here
+        // (because the pcmpestri instruction will saturate it at 16)
+        //
+        // However, specifying non-ascii bytes will result in non-ascii
+        // indices being matched to, so we have to avoid this.
+        AsciiChars {
+            needle: lo & ASCII_WORD_MASK,
+            needle_hi: hi & ASCII_WORD_MASK,
+            count: count as u8,
+        }
     }
 
     /// Add a new ASCII character to the set to search for.
@@ -264,6 +281,11 @@ unsafe impl<'a, F> Searcher<'a> for AsciiCharsSearcher<'a, F>
 
     #[inline]
     fn next(&mut self) -> SearchStep {
+        // Assert that we are searching for only ascii
+        let inner = &self.needle.inner;
+        debug_assert!(inner.needle & !ASCII_WORD_MASK == 0);
+        debug_assert!(inner.needle_hi & !ASCII_WORD_MASK == 0);
+
         if self.offset >= self.haystack.len() { return SearchStep::Done }
 
         let left_to_search = &self.haystack[self.offset..]; // TODO: unchecked_slice?
@@ -302,11 +324,11 @@ mod test {
     #[cfg(all(feature = "unstable", target_arch = "x86_64"))]
     use std::{slice,str,ptr};
 
-    pub const SPACE: AsciiChars       = AsciiChars { needle: 0x0000000000000020, needle_hi: 0, count: 1 };
+    pub const SPACE: AsciiChars       = AsciiChars::from_words(0x0000000000000020, 0, 1);
     // < > &
-    pub const XML_DELIM_3: AsciiChars = AsciiChars { needle: 0x00000000003c3e26, needle_hi: 0, count: 3 };
+    pub const XML_DELIM_3: AsciiChars = AsciiChars::from_words(0x00000000003c3e26, 0, 3);
     // < > & ' "
-    pub const XML_DELIM_5: AsciiChars = AsciiChars { needle: 0x0000003c3e262722, needle_hi: 0, count: 5 };
+    pub const XML_DELIM_5: AsciiChars = AsciiChars::from_words(0x0000003c3e262722, 0, 5);
 
     #[derive(Debug,Copy,Clone)]
     struct AsciiChar(u8);
