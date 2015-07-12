@@ -343,7 +343,6 @@ mod test {
 
     #[test]
     fn works_as_find_does_for_single_characters() {
-        // Quickcheck currently only generates Strings with A-Z, a-z, 0-9
         fn prop(s: String, c: AsciiChar) -> bool {
             let mut searcher = AsciiChars::new();
             searcher.push(c.0);
@@ -354,7 +353,6 @@ mod test {
 
     #[test]
     fn works_as_find_does_for_multiple_characters() {
-        // Quickcheck currently only generates Strings with A-Z, a-z, 0-9
         fn prop(s: String, (c1, c2, c3, c4): (AsciiChar, AsciiChar, AsciiChar, AsciiChar)) -> bool {
             let mut searcher = AsciiChars::new();
             searcher.push(c1.0);
@@ -369,7 +367,6 @@ mod test {
     #[test]
     fn works_as_find_does_for_many_characters() {
         // test up to 16 ascii characters
-        // Quickcheck currently only generates Strings with A-Z, a-z, 0-9
         fn prop(s: String, v: Vec<AsciiChar>) -> bool {
             let n = cmp::min(super::MAXBYTES as usize, v.len());
             let mut searcher = AsciiChars::new();
