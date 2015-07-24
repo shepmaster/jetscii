@@ -56,6 +56,107 @@ enum InitialMatch {
     Incomplete(usize),
 }
 
+trait PackedCompareOperation {
+    // Returns a mask
+    unsafe fn initial(&self, ptr: *const u8, offset: usize, len: usize) -> u64;
+    // Returns an index
+    unsafe fn body(&self, ptr: *const u8, offset: usize, len: usize) -> u32;
+}
+
+#[cfg(all(feature = "unstable", target_arch = "x86_64"))]
+struct UnalignedByteSliceHandler<T> {
+    operation: T,
+}
+
+#[cfg(all(feature = "unstable", target_arch = "x86_64"))]
+impl<T> UnalignedByteSliceHandler<T>
+    where T: PackedCompareOperation
+{
+    #[inline]
+    #[cfg(all(feature = "unstable", target_arch = "x86_64"))]
+    fn find(&self, haystack: &[u8]) -> Option<usize> {
+        let mut len = haystack.len();
+
+        if len == 0 { return None }
+
+        // The PCMPxSTRx instructions always read 16 bytes worth of
+        // data. To avoid walking off the end of a page (and
+        // potentially into a protected area), we read in 16-byte
+        // chunks aligned to the *end* of the byte slice. The
+        // instructions handle truly unaligned access just fine; the
+        // trick lies in searching the leftover bytes at the beginning
+        // of the byte slice.
+
+        let true_ptr = haystack.as_ptr();
+
+        // Start at the 16-byte-aligned block *before* the byte slice
+        // starts
+        let ptr = (true_ptr as usize & !0xF) as *const u8;
+
+        // Find where the byte slice really starts
+        let initial_offset = true_ptr as usize & 0xF;
+        let mut offset = initial_offset;
+
+        // If the byte slice is magically aligned, skip this extra work
+        if offset != 0 {
+            match self.initial_unaligned_byte_slice(ptr, offset, len) {
+                InitialMatch::Complete(result) => return result,
+                InitialMatch::Incomplete(length_of_leading_slice) => {
+                    offset = 16;
+                    len -= length_of_leading_slice;
+                }
+            }
+        }
+
+        while len != 0 {
+            let res: u32;
+
+            res = unsafe { self.operation.body(ptr, offset, len) };
+
+            // We know if it matched if the zero flag is set (or
+            // unset?), we shouldn't need to test res...
+            if res == 16 {
+                offset += 16;
+                len = len.saturating_sub(16);
+            } else {
+                return Some(res as usize + offset - initial_offset);
+            }
+        }
+
+        None
+    }
+
+    #[inline]
+    #[cfg(all(feature = "unstable", target_arch = "x86_64"))]
+    fn initial_unaligned_byte_slice(&self, ptr: *const u8, offset: usize, len: usize) -> InitialMatch {
+        // We use the PCMPESTRM instruction on the 16-byte-aligned
+        // block that contains the *start* of the byte slice. This
+        // returns a mask of all the matching bytes. We can can then
+        // ignore unrelated leading bits to find the index of the
+        // first related byte (if any).
+
+        let mut matching_bytes = unsafe { self.operation.initial(ptr, offset, len) };
+
+        // Ignore matches that occurred before our byte slice began
+        matching_bytes >>= offset;
+
+        if matching_bytes != 0 {
+            // Matched somewhere in there, find the least significant bit
+            let index = matching_bytes.trailing_zeros() as usize;
+            return InitialMatch::Complete(Some(index));
+        }
+
+        let length_of_leading_slice = 16 - offset;
+
+        if len < length_of_leading_slice {
+            // We've searched the entire byte slice
+            InitialMatch::Complete(None)
+        } else {
+            InitialMatch::Incomplete(length_of_leading_slice)
+        }
+    }
+}
+
 impl AsciiChars {
     #[inline]
     /// Create an empty AsciiChars
@@ -108,120 +209,54 @@ impl AsciiChars {
     #[cfg(all(feature = "unstable", target_arch = "x86_64"))]
     #[inline]
     pub fn find(self, haystack: &str) -> Option<usize> {
-        let haystack = haystack.as_bytes();
-        let mut len = haystack.len();
+        UnalignedByteSliceHandler { operation: self }.find(haystack.as_bytes())
+    }
+}
 
-        if len == 0 { return None }
+#[cfg(all(feature = "unstable", target_arch = "x86_64"))]
+impl PackedCompareOperation for AsciiChars {
+    unsafe fn initial(&self, ptr: *const u8, offset: usize, len: usize) -> u64 {
+        let matching_bytes;
 
-        // The PCMPxSTRx instructions always read 16 bytes worth of
-        // data. To avoid walking off the end of a page (and
-        // potentially into a protected area), we read in 16-byte
-        // chunks aligned to the *end* of the string. The instructions
-        // handle truly unaligned access just fine; the trick lies in
-        // searching the leftover bytes at the beginning of the
-        // string.
+        asm!("movlhps $2, $1
+              pcmpestrm $$0, ($3), $1"
+             : // output operands
+             "={xmm0}"(matching_bytes)
+             : // input operands
+             "x"(self.needle),
+             "x"(self.needle_hi),
+             "r"(ptr),
+             "{rdx}"(offset + len), // saturates at 16
+             "{rax}"(self.count as u64)
+             : // clobbers
+             "cc"
+             : // options
+        );
 
-        let true_ptr = haystack.as_ptr();
-
-        // Start at the 16-byte-aligned block *before* the string data
-        // starts
-        let ptr = (true_ptr as usize & !0xF) as *const u8;
-
-        // Find where the string really starts
-        let initial_offset = true_ptr as usize & 0xF;
-        let mut offset = initial_offset;
-
-        // If the string is magically aligned, skip this extra work
-        if offset != 0 {
-            match self.search_initial_unaligned_string(ptr, offset, len) {
-                InitialMatch::Complete(result) => return result,
-                InitialMatch::Incomplete(length_of_leading_str) => {
-                    offset = 16;
-                    len -= length_of_leading_str;
-                }
-            }
-        }
-
-        while len != 0 {
-            let res: u32;
-
-            unsafe {
-                asm!("# Move low word of $2 to high word of $1
-                      movlhps $2, $1
-                      pcmpestri $$0, ($3, $4), $1"
-                     : // output operands
-                     "={ecx}"(res)
-                     : // input operands
-                     "x"(self.needle),
-                     "x"(self.needle_hi),
-                     "r"(ptr),
-                     "r"(offset)
-                     "{rdx}"(len),              // haystack length
-                     "{rax}"(self.count as u64) // needle length
-                     : // clobbers
-                     "cc"
-                     : // options
-                 );
-            }
-
-            // We know if it matched if the zero flag is set (or
-            // unset?), we shouldn't need to test res...
-            if res == 16 {
-                offset += 16;
-                len = len.saturating_sub(16);
-            } else {
-                return Some(res as usize + offset - initial_offset);
-            }
-        }
-
-        None
+        matching_bytes
     }
 
-    #[inline]
-    #[cfg(all(feature = "unstable", target_arch = "x86_64"))]
-    fn search_initial_unaligned_string(&self, ptr: *const u8, offset: usize, len: usize) -> InitialMatch {
-        // We use the PCMPESTRM instruction on the 16-byte-aligned
-        // block that contains the *start* of the string. This returns
-        // a mask of all the matching characters. We can can then
-        // ignore unrelated leading bits to find the index of the
-        // first related character (if any).
+    unsafe fn body(&self, ptr: *const u8, offset: usize, len: usize) -> u32 {
+        let res;
 
-        let mut matching_bytes: u64;
+        asm!("# Move low word of $2 to high word of $1
+              movlhps $2, $1
+              pcmpestri $$0, ($3, $4), $1"
+             : // output operands
+             "={ecx}"(res)
+             : // input operands
+             "x"(self.needle),
+             "x"(self.needle_hi),
+             "r"(ptr),
+             "r"(offset)
+             "{rdx}"(len),              // haystack length
+             "{rax}"(self.count as u64) // needle length
+             : // clobbers
+             "cc"
+             : // options
+         );
 
-        unsafe {
-            asm!("movlhps $2, $1
-                  pcmpestrm $$0, ($3), $1"
-                 : // output operands
-                 "={xmm0}"(matching_bytes)
-                 : // input operands
-                 "x"(self.needle),
-                 "x"(self.needle_hi),
-                 "r"(ptr),
-                 "{rdx}"(offset + len), // saturates at 16
-                 "{rax}"(self.count as u64)
-                 : // clobbers
-                 "cc"
-                 : // options
-            );
-        }
-
-        // Ignore matches that occurred before our string began
-        matching_bytes >>= offset;
-
-        if matching_bytes != 0 {
-            // Matched somewhere in there, find the least significant bit
-            let index = matching_bytes.trailing_zeros() as usize;
-            return InitialMatch::Complete(Some(index));
-        }
-
-        let length_of_leading_str = 16 - offset;
-
-        if len < length_of_leading_str {
-            // We've searched the entire string
-            InitialMatch::Complete(None)
-        } else {
-            InitialMatch::Incomplete(length_of_leading_str)
-        }
+        res
     }
 }
 
