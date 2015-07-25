@@ -33,6 +33,7 @@
 //! assert_eq!(&parts, &["86", "J52", "rev1"]);
 //! ```
 
+use std::cmp::min;
 use std::fmt;
 use std::str::pattern::{Pattern,Searcher,SearchStep};
 
@@ -345,13 +346,124 @@ unsafe impl<'a, F> Searcher<'a> for AsciiCharsSearcher<'a, F>
     }
 }
 
+#[derive(Debug,Copy,Clone)]
+pub struct Substring<'a> {
+    raw: &'a str,
+    needle_lo: u64,
+    needle_hi: u64,
+    needle_len: u8,
+}
+
+impl<'a> Substring<'a> {
+    pub fn new(needle: &'a str) -> Substring<'a> {
+        fn pack_needle_bytes(bytes: &[u8]) -> u64 {
+            let mut needle = 0;
+            for &b in bytes.iter().rev() {
+                needle <<= 8;
+                needle |= b as u64;
+            }
+            needle
+        }
+
+        let mut bytes = needle.as_bytes().chunks(8);
+        let needle_lo = bytes.next().map(pack_needle_bytes).unwrap_or(0);
+        let needle_hi = bytes.next().map(pack_needle_bytes).unwrap_or(0);
+
+        Substring {
+            raw: needle,
+            needle_lo: needle_lo,
+            needle_hi: needle_hi,
+            needle_len: min(needle.len(), 16) as u8,
+        }
+    }
+
+    #[cfg(all(feature = "unstable", target_arch = "x86_64"))]
+    pub fn find(self, haystack: &str) -> Option<usize> {
+        // It's ok to treat the haystack as a bag of bytes because the
+        // needle is guaranteed to only match complete UTF-8
+        // characters. Whenever a match is found, we double-check the
+        // match position with the complete needle.
+
+        let needle = self.raw.as_bytes();
+        let haystack = haystack.as_bytes();
+
+        if needle.len() == 0 && haystack.len() == 0 {
+            return Some(0);
+        }
+
+        let searcher = UnalignedByteSliceHandler { operation: self };
+        let mut offset = 0;
+
+        while let Some(pos) = searcher.find(&haystack[offset..]) {
+            // Found a match, but is it really?
+            if haystack[pos+offset..].starts_with(needle) {
+                return Some(offset + pos)
+            }
+
+            // Skip past this false positive
+            offset += pos + 1;
+        }
+        None
+    }
+
+    #[cfg(not(all(feature = "unstable", target_arch = "x86_64")))]
+    pub fn find(self, haystack: &str) -> Option<usize> {
+        haystack.find(self.raw)
+    }
+}
+
+impl<'a> PackedCompareOperation for Substring<'a> {
+    unsafe fn initial(&self, haystack: *const u8, offset: usize, len: usize) -> u64 {
+        let matching_bytes;
+
+        asm!("movlhps $2, $1
+              pcmpestrm $$0b00001100, ($3), $1"
+             : // output operands
+             "={xmm0}"(matching_bytes)
+             : // input operands
+             "x"(self.needle_lo),
+             "x"(self.needle_hi),
+             "r"(haystack),
+             "{rax}"(self.needle_len as u64),
+             "{rdx}"(offset + len)
+             : // clobbers
+             "cc"
+             : // options
+        );
+
+        matching_bytes
+    }
+
+    unsafe fn body(&self, haystack: *const u8, offset: usize, len: usize) -> u32 {
+        let matching_idx;
+
+        asm!("movlhps $2, $1
+              pcmpestri $$0b00001100, ($3, $4), $1"
+             : // output operands
+             "={ecx}"(matching_idx)
+             : // input operands
+             "x"(self.needle_lo),
+             "x"(self.needle_hi),
+             "r"(haystack),
+             "r"(offset),
+             "{rax}"(self.needle_len as u64),
+             "{rdx}"(len)
+             : // clobbers
+             "cc"
+             : // options
+        );
+
+        matching_idx
+    }
+}
+
 #[cfg(test)]
 mod test {
     extern crate quickcheck;
     extern crate libc;
     extern crate rand;
 
-    use super::AsciiChars;
+    use super::{AsciiChars, Substring};
     use self::rand::Rng;
     use self::quickcheck::{quickcheck,Arbitrary,Gen};
     use std::str::pattern::{Pattern,Searcher,SearchStep};
@@ -622,6 +734,80 @@ mod test {
             assert_eq!(Some(tail.len() - 1), needle.find(tail));
         }
     }
+
+    #[test]
+    fn works_as_find_does_for_substrings() {
+        fn prop(needle: String, haystack: String) -> bool {
+            let s = Substring::new(&needle);
+            s.find(&haystack) == haystack.find(&needle)
+        }
+        quickcheck(prop as fn(String, String) -> bool);
+    }
+
+    #[test]
+    fn substring_is_found() {
+        let substr = Substring::new("zz");
+        assert_eq!(Some(0),  substr.find("zz"));
+        assert_eq!(Some(1),  substr.find("0zz"));
+        assert_eq!(Some(2),  substr.find("01zz"));
+        assert_eq!(Some(3),  substr.find("012zz"));
+        assert_eq!(Some(4),  substr.find("0123zz"));
+        assert_eq!(Some(5),  substr.find("01234zz"));
+        assert_eq!(Some(6),  substr.find("012345zz"));
+        assert_eq!(Some(7),  substr.find("0123456zz"));
+        assert_eq!(Some(8),  substr.find("01234567zz"));
+        assert_eq!(Some(9),  substr.find("012345678zz"));
+        assert_eq!(Some(10), substr.find("0123456789zz"));
+        assert_eq!(Some(11), substr.find("0123456789Azz"));
+        assert_eq!(Some(12), substr.find("0123456789ABzz"));
+        assert_eq!(Some(13), substr.find("0123456789ABCzz"));
+        assert_eq!(Some(14), substr.find("0123456789ABCDzz"));
+        assert_eq!(Some(15), substr.find("0123456789ABCDEzz"));
+        assert_eq!(Some(16), substr.find("0123456789ABCDEFzz"));
+        assert_eq!(Some(17), substr.find("0123456789ABCDEFGzz"));
+    }
+
+    #[test]
+    fn substring_is_not_found() {
+        let substr = Substring::new("zz");
+        assert_eq!(None, substr.find(""));
+        assert_eq!(None, substr.find("0"));
+        assert_eq!(None, substr.find("01"));
+        assert_eq!(None, substr.find("012"));
+        assert_eq!(None, substr.find("0123"));
+        assert_eq!(None, substr.find("01234"));
+        assert_eq!(None, substr.find("012345"));
+        assert_eq!(None, substr.find("0123456"));
+        assert_eq!(None, substr.find("01234567"));
+        assert_eq!(None, substr.find("012345678"));
+        assert_eq!(None, substr.find("0123456789"));
+        assert_eq!(None, substr.find("0123456789A"));
+        assert_eq!(None, substr.find("0123456789AB"));
+        assert_eq!(None, substr.find("0123456789ABC"));
+        assert_eq!(None, substr.find("0123456789ABCD"));
+        assert_eq!(None, substr.find("0123456789ABCDE"));
+        assert_eq!(None, substr.find("0123456789ABCDEF"));
+        assert_eq!(None, substr.find("0123456789ABCDEFG"));
+    }
+
+    #[test]
+    fn substring_has_false_positive() {
+        // The PCMPESTRI instruction will mark the "a" before "ab" as
+        // a match because it cannot look beyond the 16 byte window
+        // of the haystack. We need to double-check any match to
+        // ensure it completely matches.
+
+        let substr = Substring::new("ab");
+        assert_eq!(Some(16), substr.find("aaaaaaaaaaaaaaaaab"));
+        //   this "a" is a false positive ~~~~~~~~~~~~~~~^
+    }
+
+    #[test]
+    fn substring_needle_is_longer_than_16_bytes() {
+        let needle   = "0123456789abcdefg";
+        let haystack = "0123456789abcdefgh";
+        assert_eq!(Some(0), Substring::new(needle).find(haystack));
+    }
 }
 
 #[cfg(test)]
@@ -629,6 +815,7 @@ mod bench {
     extern crate test;
 
     use super::test::{SPACE,XML_DELIM_3,XML_DELIM_5};
+    use super::{Substring};
     use std::iter;
 
     fn prefix_string() -> String {
@@ -763,5 +950,31 @@ mod bench {
         bench_xml_delim_5(b, |hs| hs.find(|c| {
             c == '<' || c == '>' || c == '&' || c == '\'' || c == '"'
         }))
+    }
+
+    fn bench_substring<F>(b: &mut test::Bencher, f: F)
+        where F: Fn(&str) -> Option<usize>
+    {
+        let mut haystack = prefix_string();
+        haystack.push_str("xyzzy");
+
+        b.iter(|| test::black_box(f(&haystack)));
+        b.bytes = haystack.len() as u64;
+    }
+
+    #[bench]
+    fn substring_with_cached_searcher(b: &mut test::Bencher) {
+        let z = Substring::new("xyzzy");
+        bench_substring(b, |hs| z.find(hs))
+    }
+
+    #[bench]
+    fn substring_with_created_searcher(b: &mut test::Bencher) {
+        bench_substring(b, |hs| Substring::new("xyzzy").find(hs))
+    }
+
+    #[bench]
+    fn substring_find(b: &mut test::Bencher) {
+        bench_substring(b, |hs| hs.find("xyzzy"))
     }
 }
