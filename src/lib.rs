@@ -304,11 +304,14 @@ unsafe impl<F> DirectSearch for AsciiCharsWithFallback<F>
     fn find(&self, haystack: &str) -> Option<usize> {
         haystack.as_bytes().iter().cloned().position(&self.fallback)
     }
+
+    fn len(&self) -> usize { 1 }
 }
 
 // Do we really want to expose the trait like this?
 pub unsafe trait DirectSearch {
     fn find(&self, haystack: &str) -> Option<usize>;
+    fn len(&self) -> usize;
 }
 
 #[derive(Debug,Copy,Clone)]
@@ -336,7 +339,7 @@ unsafe impl<'a, D> Searcher<'a> for DirectSearcher<'a, D>
 
         let (res, next_offset) = if idx == 0 {
             // A match occurs at the beginning of the string
-            let next = self.offset + 1;
+            let next = self.offset + self.direct_search.len();
             (SearchStep::Match(self.offset, next), next)
         } else {
             // A match occurs somewhere further in the string
@@ -379,9 +382,11 @@ impl<'a> Substring<'a> {
             needle_len: min(needle.len(), 16) as u8,
         }
     }
+}
 
+unsafe impl<'a> DirectSearch for Substring<'a> {
     #[cfg(all(feature = "unstable", target_arch = "x86_64"))]
-    pub fn find(self, haystack: &str) -> Option<usize> {
+    fn find(&self, haystack: &str) -> Option<usize> {
         // It's ok to treat the haystack as a bag of bytes because the
         // needle is guaranteed to only match complete UTF-8
         // characters. Whenever a match is found, we double-check the
@@ -394,7 +399,7 @@ impl<'a> Substring<'a> {
             return Some(0);
         }
 
-        let searcher = UnalignedByteSliceHandler { operation: self };
+        let searcher = UnalignedByteSliceHandler { operation: *self };
         let mut offset = 0;
 
         while let Some(pos) = searcher.find(&haystack[offset..]) {
@@ -410,9 +415,11 @@ impl<'a> Substring<'a> {
     }
 
     #[cfg(not(all(feature = "unstable", target_arch = "x86_64")))]
-    pub fn find(self, haystack: &str) -> Option<usize> {
+    fn find(&self, haystack: &str) -> Option<usize> {
         haystack.find(self.raw)
     }
+
+    fn len(&self) -> usize { self.raw.len() }
 }
 
 impl<'a> PackedCompareOperation for Substring<'a> {
@@ -457,6 +464,14 @@ impl<'a> PackedCompareOperation for Substring<'a> {
         );
 
         matching_idx
+    }
+}
+
+impl<'a> Pattern<'a> for Substring<'a> {
+    type Searcher = DirectSearcher<'a, Substring<'a>>;
+
+    fn into_searcher(self, haystack: &'a str) -> DirectSearcher<'a, Substring<'a>> {
+        DirectSearcher { haystack: haystack, offset: 0, direct_search: self }
     }
 }
 
@@ -811,6 +826,14 @@ mod test {
         let haystack = "0123456789abcdefgh";
         assert_eq!(Some(0), Substring::new(needle).find(haystack));
     }
+
+    #[test]
+    fn substring_as_pattern() {
+        let needle   = "and";
+        let haystack = "moats and boats and waterfalls";
+        let parts: Vec<_> = haystack.split(Substring::new(needle)).collect();
+        assert_eq!(&parts, &["moats ", " boats ", " waterfalls"]);
+    }
 }
 
 #[cfg(test)]
@@ -974,6 +997,11 @@ mod bench {
     #[bench]
     fn substring_with_created_searcher(b: &mut test::Bencher) {
         bench_substring(b, |hs| Substring::new("xyzzy").find(hs))
+    }
+
+    #[bench]
+    fn substring_as_pattern(b: &mut test::Bencher) {
+        bench_substring(b, |hs| hs.find(Substring::new("xyzzy")))
     }
 
     #[bench]
