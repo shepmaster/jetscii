@@ -281,51 +281,54 @@ pub struct AsciiCharsWithFallback<F> {
 impl<'a, F> Pattern<'a> for AsciiCharsWithFallback<F>
     where F: Fn(u8) -> bool
 {
-    type Searcher = AsciiCharsSearcher<'a, F>;
+    type Searcher = DirectSearcher<'a, AsciiCharsWithFallback<F>>;
 
-    fn into_searcher(self, haystack: &'a str) -> AsciiCharsSearcher<'a, F> {
-        AsciiCharsSearcher { haystack: haystack, offset: 0, needle: self }
+    fn into_searcher(self, haystack: &'a str) -> DirectSearcher<'a, AsciiCharsWithFallback<F>> {
+        // Assert that we are searching for only ascii
+        debug_assert!(self.inner.needle & !ASCII_WORD_MASK == 0);
+        debug_assert!(self.inner.needle_hi & !ASCII_WORD_MASK == 0);
+
+        DirectSearcher { haystack: haystack, offset: 0, direct_search: self }
     }
 }
 
-/// An implementation of `Searcher` using `AsciiChars`
-#[derive(Debug,Copy,Clone)]
-pub struct AsciiCharsSearcher<'a, F> {
-    haystack: &'a str,
-    offset: usize,
-    needle: AsciiCharsWithFallback<F>,
-}
-
-impl<'a, F> AsciiCharsSearcher<'a, F>
+unsafe impl<F> DirectSearch for AsciiCharsWithFallback<F>
     where F: Fn(u8) -> bool
 {
     #[cfg(all(feature = "unstable", target_arch = "x86_64"))]
-    fn next_idx(&self, haystack: &str) -> Option<usize> {
-        self.needle.inner.find(haystack)
+    fn find(&self, haystack: &str) -> Option<usize> {
+        self.inner.find(haystack)
     }
 
     #[cfg(not(all(feature = "unstable", target_arch = "x86_64")))]
-    fn next_idx(&self, haystack: &str) -> Option<usize> {
-        haystack.as_bytes().iter().cloned().position(&self.needle.fallback)
+    fn find(&self, haystack: &str) -> Option<usize> {
+        haystack.as_bytes().iter().cloned().position(&self.fallback)
     }
 }
 
-unsafe impl<'a, F> Searcher<'a> for AsciiCharsSearcher<'a, F>
-    where F: Fn(u8) -> bool
+// Do we really want to expose the trait like this?
+pub unsafe trait DirectSearch {
+    fn find(&self, haystack: &str) -> Option<usize>;
+}
+
+#[derive(Debug,Copy,Clone)]
+pub struct DirectSearcher<'a, D> {
+    haystack: &'a str,
+    offset: usize,
+    direct_search: D,
+}
+
+unsafe impl<'a, D> Searcher<'a> for DirectSearcher<'a, D>
+    where D: DirectSearch
 {
     fn haystack(&self) -> &'a str { self.haystack }
 
     #[inline]
     fn next(&mut self) -> SearchStep {
-        // Assert that we are searching for only ascii
-        let inner = &self.needle.inner;
-        debug_assert!(inner.needle & !ASCII_WORD_MASK == 0);
-        debug_assert!(inner.needle_hi & !ASCII_WORD_MASK == 0);
-
         if self.offset >= self.haystack.len() { return SearchStep::Done }
 
         let left_to_search = &self.haystack[self.offset..]; // TODO: unchecked_slice?
-        let idx = self.next_idx(left_to_search);
+        let idx = self.direct_search.find(left_to_search);
 
         // If there's no match, then the rest of the string should be
         // returned.
@@ -463,7 +466,7 @@ mod test {
     extern crate libc;
     extern crate rand;
 
-    use super::{AsciiChars, Substring};
+    use super::{AsciiChars, Substring, DirectSearch};
     use self::rand::Rng;
     use self::quickcheck::{quickcheck,Arbitrary,Gen};
     use std::str::pattern::{Pattern,Searcher,SearchStep};
@@ -815,7 +818,7 @@ mod bench {
     extern crate test;
 
     use super::test::{SPACE,XML_DELIM_3,XML_DELIM_5};
-    use super::{Substring};
+    use super::{Substring, DirectSearch};
     use std::iter;
 
     fn prefix_string() -> String {
