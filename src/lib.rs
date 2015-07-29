@@ -10,34 +10,20 @@
 //!
 //! ### Searching for a set of ASCII characters
 //! ```
-//! use jetscii::AsciiChars;
-//! let mut search = AsciiChars::new();
-//! search.push(b'-');
-//! search.push(b':');
-//! let part_number = "86-J52:rev1";
-//! let parts: Vec<_> = part_number.split(search.with_fallback(|c| {
-//!     c == b'-' || c == b':'
-//! })).collect();
-//! assert_eq!(&parts, &["86", "J52", "rev1"]);
-//! ```
+//! #[macro_use]
+//! extern crate jetscii;
 //!
-//! For maximum performance, you can create the searcher as a constant
-//! item. Print an existing `AsciiChars` with the debug formatter to
-//! get the appropriate invocation.
-//!
-//! ```
-//! use jetscii::AsciiChars;
-//! let search = AsciiChars::from_words(0x0000000000002d3a, 0, 2);
-//! let part_number = "86-J52:rev1";
-//! let parts: Vec<_> = part_number.split(search.with_fallback(|c| {
-//!     c == b'-' || c == b':'
-//! })).collect();
-//! assert_eq!(&parts, &["86", "J52", "rev1"]);
+//! fn main() {
+//!     let part_number = "86-J52:rev1";
+//!     let parts: Vec<_> = part_number.split(ascii_chars!('-', ':')).collect();
+//!     assert_eq!(&parts, &["86", "J52", "rev1"]);
+//! }
 //! ```
 //!
 //! ### Searching for a substring
 //! ```
 //! use jetscii::Substring;
+//!
 //! let colors: Vec<_> = "red, blue, green".split(Substring::new(", ")).collect();
 //! assert_eq!(&colors, &["red", "blue", "green"]);
 //! ```
