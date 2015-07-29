@@ -595,22 +595,20 @@ mod test {
     pub const XML_DELIM_5: AsciiChars = AsciiChars::from_words(0x0000003c3e262722, 0, 5);
 
     #[derive(Debug,Copy,Clone)]
-    struct AsciiChar(u8);
+    struct AsciiChar(char);
 
     impl Arbitrary for AsciiChar {
         fn arbitrary<G>(g: &mut G) -> AsciiChar
             where G: Gen
         {
-            AsciiChar(g.gen_range(0, 128))
+            AsciiChar(g.gen_range::<u8>(0, 128) as char)
         }
     }
 
     #[test]
     fn works_as_find_does_for_single_characters() {
         fn prop(s: String, c: AsciiChar) -> bool {
-            let mut searcher = AsciiChars::new();
-            searcher.push(c.0);
-            s.find(searcher.with_fallback(|b| b == c.0)) == s.find(c.0 as char)
+            s.find(ascii_chars!(c.0)) == s.find(c.0)
         }
         quickcheck(prop as fn(String, AsciiChar) -> bool);
     }
@@ -618,26 +616,20 @@ mod test {
     #[test]
     fn works_as_find_does_for_multiple_characters() {
         fn prop(s: String, (c1, c2, c3, c4): (AsciiChar, AsciiChar, AsciiChar, AsciiChar)) -> bool {
-            let mut searcher = AsciiChars::new();
-            searcher.push(c1.0);
-            searcher.push(c2.0);
-            searcher.push(c3.0);
-            searcher.push(c4.0);
-            s.find(searcher.with_fallback(|b| b == c1.0 || b == c2.0 || b == c3.0 || b == c4.0)) == s.find(&[c1.0 as char, c2.0 as char, c3.0 as char, c4.0 as char][..])
+            s.find(ascii_chars!(c1.0, c2.0, c3.0, c4.0)) == s.find(&[c1.0, c2.0, c3.0, c4.0][..])
         }
         quickcheck(prop as fn(String, (AsciiChar, AsciiChar, AsciiChar, AsciiChar)) -> bool);
     }
 
     #[test]
-    fn works_as_find_does_for_many_characters() {
-        // test up to 16 ascii characters
+    fn works_as_find_does_for_up_to_16_characters() {
         fn prop(s: String, v: Vec<AsciiChar>) -> bool {
             let n = cmp::min(super::MAXBYTES as usize, v.len());
             let mut searcher = AsciiChars::new();
             let mut chars = ['\0'; 16];
             for (index, &c) in v.iter().take(n).enumerate() {
-                searcher.push(c.0);
-                chars[index] = c.0 as char;
+                searcher.push(c.0 as u8);
+                chars[index] = c.0;
             }
             s.find(searcher.with_fallback(|b| chars[..n].iter().position(|&c| c == b as char).is_some())) == s.find(&chars[..n])
         }
@@ -646,24 +638,20 @@ mod test {
 
     #[test]
     fn can_search_for_nul_bytes() {
-        let mut s = AsciiChars::new();
-        s.push(b'\0');
-        assert_eq!(Some(1), "a\0".find(s.with_fallback(|b| b == b'\0')));
-        assert_eq!(Some(0), "\0".find(s.with_fallback(|b| b == b'\0')));
-        assert_eq!(None, "".find(s.with_fallback(|b| b == b'\0')));
+        assert_eq!(Some(1), "a\0".find(ascii_chars!('\0')));
+        assert_eq!(Some(0), "\0".find(ascii_chars!('\0')));
+        assert_eq!(None, "".find(ascii_chars!('\0')));
     }
 
     #[test]
     fn can_search_in_nul_bytes() {
-        let mut s = AsciiChars::new();
-        s.push(b'a');
-        assert_eq!(Some(1), "\0a".find(s.with_fallback(|b| b == b'a')));
-        assert_eq!(None, "\0".find(s.with_fallback(|b| b == b'a')));
+        assert_eq!(Some(1), "\0a".find(ascii_chars!('a')));
+        assert_eq!(None, "\0".find(ascii_chars!('a')));
     }
 
     #[test]
     fn pattern_does_not_backtrack_after_first() {
-        let mut searcher = SPACE.with_fallback(|b| b == b' ').into_searcher("hello w ");
+        let mut searcher = ascii_chars!(' ').into_searcher("hello w ");
         assert_eq!(SearchStep::Reject(0,5), searcher.next());
         assert_eq!(SearchStep::Match(5,6), searcher.next());
         assert_eq!(SearchStep::Reject(6,7), searcher.next());
@@ -842,8 +830,7 @@ mod test {
         let text = alloc_guarded_string("0123456789abcdef", true);
 
         // Will search for the last char
-        let mut needle = AsciiChars::new();
-        needle.push(b'f');
+        let needle = ascii_chars!('f');
 
         // Check all suffixes of our 16-byte string
         for offset in 0..text.len() {
