@@ -3,10 +3,12 @@
 #![feature(pattern)]
 #![cfg_attr(test, feature(test))]
 
+//! A tiny library to efficiently search strings for substrings or
+//! sets of ASCII characters.
 //!
-//! A tiny library to efficiently search strings for ASCII characters.
+//! ## Examples
 //!
-//! ## Example
+//! ### Searching for a set of ASCII characters
 //! ```
 //! use jetscii::AsciiChars;
 //! let mut search = AsciiChars::new();
@@ -31,6 +33,13 @@
 //!     c == b'-' || c == b':'
 //! })).collect();
 //! assert_eq!(&parts, &["86", "J52", "rev1"]);
+//! ```
+//!
+//! ### Searching for a substring
+//! ```
+//! use jetscii::Substring;
+//! let colors: Vec<_> = "red, blue, green".split(Substring::new(", ")).collect();
+//! assert_eq!(&colors, &["red", "blue", "green"]);
 //! ```
 
 use std::cmp::min;
@@ -308,12 +317,14 @@ unsafe impl<F> DirectSearch for AsciiCharsWithFallback<F>
     fn len(&self) -> usize { 1 }
 }
 
+/// Types that return the index of the next match.
 // Do we really want to expose the trait like this?
 pub unsafe trait DirectSearch {
     fn find(&self, haystack: &str) -> Option<usize>;
     fn len(&self) -> usize;
 }
 
+/// A searcher implementation for DirectSearch types.
 #[derive(Debug,Copy,Clone)]
 pub struct DirectSearcher<'a, D> {
     haystack: &'a str,
@@ -352,6 +363,7 @@ unsafe impl<'a, D> Searcher<'a> for DirectSearcher<'a, D>
     }
 }
 
+/// Search a string for a substring.
 #[derive(Debug,Copy,Clone)]
 pub struct Substring<'a> {
     raw: &'a str,
