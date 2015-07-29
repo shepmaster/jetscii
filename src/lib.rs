@@ -225,7 +225,8 @@ impl AsciiChars {
 
 impl fmt::Debug for AsciiChars {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "AsciiChars {{ needle: 0x{:016x}, count: {} }}", self.needle, self.count)
+        write!(f, "AsciiChars {{ lo: 0x{:016x}, hi: 0x{:016x}, count: {} }}",
+               self.needle, self.needle_hi, self.count)
     }
 }
 
