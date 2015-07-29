@@ -72,7 +72,7 @@ Searching a 5MiB string of `a`s with the string `xyzzy` at the end:
 | Method                                           | Speed     |
 |--------------------------------------------------|-----------|
 | **`str.find(Substring::new("xyzzy"))`**          | 5017 MB/s |
-| str.find("xyzzy"                                 | 3837 MB/s |
+| str.find("xyzzy")                                | 3837 MB/s |
 
 ## Contributing
 
