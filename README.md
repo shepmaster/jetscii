@@ -1,12 +1,15 @@
 # Jetscii
 
-A tiny library to efficiently search strings for ASCII characters.
+A tiny library to efficiently search strings for substrings or sets of
+ASCII characters.
 
 [![Build Status](https://travis-ci.org/shepmaster/jetscii.svg)](https://travis-ci.org/shepmaster/jetscii) [![Current Version](http://meritbadge.herokuapp.com/jetscii)](https://crates.io/crates/jetscii)
 
 [Documentation](https://shepmaster.github.io/jetscii/)
 
-## Example
+## Examples
+
+### Searching for a set of ASCII characters
 
 ```rust
 use jetscii::AsciiChars;
@@ -20,14 +23,22 @@ let parts: Vec<_> = part_number.split(search.with_fallback(|c| {
 assert_eq!(&parts, &["86", "J52", "rev1"]);
 ```
 
+### Searching for a substring
+
+```rust
+use jetscii::Substring;
+let colors: Vec<_> = "red, blue, green".split(Substring::new(", ")).collect();
+assert_eq!(&colors, &["red", "blue", "green"]);
+```
+
 ## What's so special about this library?
 
-We use a particular x86-64 SSE 4.2 instruction (`PCMPESTRI`) to gain
-great speedups. This method stays fast even when searching for one
-character in a set of up to 8 choices.
+We use a particular set of x86-64 SSE 4.2 instructions (`PCMPESTRI`
+and `PCMPESTRM`) to gain great speedups. This method stays fast even
+when searching for a character in a set of up to 16 choices.
 
-When `PCMPESTRI` is not available, we fall back to a
-universally-supported byte iterator method.
+When the `PCMPxSTRx` instructions are not available, we fall back to
+reasonably fast but universally-supported methods.
 
 ## Benchmarks
 
@@ -54,6 +65,13 @@ Searching a 5MiB string of `a`s with a single ampersand at the end:
 | `str.as_bytes().iter().position(|&v| ...)`       | 1620 MB/s |
 | `str.find(|c| ...)`                              | 1022 MB/s |
 | `str.find(&['<', '>', '&'][..])`                 |  361 MB/s |
+
+### Substrings
+
+| Method                                           | Speed     |
+|--------------------------------------------------|-----------|
+| **`str.find(Substring::new("xyzzy"))`**          | 5017 MB/s |
+| str.find("xyzzy"                                 | 3837 MB/s |
 
 ## Contributing
 

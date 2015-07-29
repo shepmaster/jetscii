@@ -3,9 +3,9 @@ name = "jetscii"
 version = "0.2.0"
 authors = ["Jake Goulding <jake.goulding@gmail.com>"]
 
-description = "A tiny library to efficiently search strings for ASCII characters"
+description = "A tiny library to efficiently search strings for substrings or sets of ASCII characters."
 readme = "README.md"
-keywords = ["string", "ascii", "search"]
+keywords = ["string", "ascii", "search", "substring"]
 
 homepage = "https://github.com/shepmaster/jetscii"
 repository = "https://github.com/shepmaster/jetscii"
