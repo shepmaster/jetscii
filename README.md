@@ -67,6 +67,8 @@ Searching a 5MiB string of `a`s with a single ampersand at the end:
 
 ### Substrings
 
+Searching a 5MiB string of `a`s with the string `xyzzy` at the end:
+
 | Method                                           | Speed     |
 |--------------------------------------------------|-----------|
 | **`str.find(Substring::new("xyzzy"))`**          | 5017 MB/s |
