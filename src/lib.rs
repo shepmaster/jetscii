@@ -46,31 +46,17 @@ use std::cmp::min;
 use std::fmt;
 use std::str::pattern::{Pattern,Searcher,SearchStep};
 
-const MAXBYTES: u8 = 16;
-
-/// 8 ascii-only bytes
-const ASCII_WORD_MASK: u64 = 0x7f7f7f7f7f7f7f7f;
-
-/// Searches a string for a set of ASCII characters. Up to 16
-/// characters may be used.
-#[derive(Copy,Clone)]
-pub struct AsciiChars {
-    needle: u64,
-    needle_hi: u64,
-    count: u8,
+trait PackedCompareOperation {
+    // Returns a mask
+    unsafe fn initial(&self, ptr: *const u8, offset: usize, len: usize) -> u64;
+    // Returns an index
+    unsafe fn body(&self, ptr: *const u8, offset: usize, len: usize) -> u32;
 }
 
 #[cfg(all(feature = "unstable", target_arch = "x86_64"))]
 enum InitialMatch {
     Complete(Option<usize>),
     Incomplete(usize),
-}
-
-trait PackedCompareOperation {
-    // Returns a mask
-    unsafe fn initial(&self, ptr: *const u8, offset: usize, len: usize) -> u64;
-    // Returns an index
-    unsafe fn body(&self, ptr: *const u8, offset: usize, len: usize) -> u32;
 }
 
 #[cfg(all(feature = "unstable", target_arch = "x86_64"))]
@@ -167,6 +153,20 @@ impl<T> UnalignedByteSliceHandler<T>
     }
 }
 
+const MAXBYTES: u8 = 16;
+
+/// 8 ascii-only bytes
+const ASCII_WORD_MASK: u64 = 0x7f7f7f7f7f7f7f7f;
+
+/// Searches a string for a set of ASCII characters. Up to 16
+/// characters may be used.
+#[derive(Copy,Clone)]
+pub struct AsciiChars {
+    needle: u64,
+    needle_hi: u64,
+    count: u8,
+}
+
 impl AsciiChars {
     #[inline]
     /// Create an empty AsciiChars
@@ -223,6 +223,12 @@ impl AsciiChars {
     }
 }
 
+impl fmt::Debug for AsciiChars {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "AsciiChars {{ needle: 0x{:016x}, count: {} }}", self.needle, self.count)
+    }
+}
+
 #[cfg(all(feature = "unstable", target_arch = "x86_64"))]
 impl PackedCompareOperation for AsciiChars {
     unsafe fn initial(&self, ptr: *const u8, offset: usize, len: usize) -> u64 {
@@ -270,12 +276,6 @@ impl PackedCompareOperation for AsciiChars {
     }
 }
 
-impl fmt::Debug for AsciiChars {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "AsciiChars {{ needle: 0x{:016x}, count: {} }}", self.needle, self.count)
-    }
-}
-
 /// Provides a hook for a user-supplied fallback implementation, used
 /// when the optimized instructions are not available.
 ///
@@ -285,20 +285,6 @@ impl fmt::Debug for AsciiChars {
 pub struct AsciiCharsWithFallback<F> {
     inner: AsciiChars,
     fallback: F,
-}
-
-impl<'a, F> Pattern<'a> for AsciiCharsWithFallback<F>
-    where F: Fn(u8) -> bool
-{
-    type Searcher = DirectSearcher<'a, AsciiCharsWithFallback<F>>;
-
-    fn into_searcher(self, haystack: &'a str) -> DirectSearcher<'a, AsciiCharsWithFallback<F>> {
-        // Assert that we are searching for only ascii
-        debug_assert!(self.inner.needle & !ASCII_WORD_MASK == 0);
-        debug_assert!(self.inner.needle_hi & !ASCII_WORD_MASK == 0);
-
-        DirectSearcher { haystack: haystack, offset: 0, direct_search: self }
-    }
 }
 
 unsafe impl<F> DirectSearch for AsciiCharsWithFallback<F>
@@ -317,49 +303,17 @@ unsafe impl<F> DirectSearch for AsciiCharsWithFallback<F>
     fn len(&self) -> usize { 1 }
 }
 
-/// Types that return the index of the next match.
-// Do we really want to expose the trait like this?
-pub unsafe trait DirectSearch {
-    fn find(&self, haystack: &str) -> Option<usize>;
-    fn len(&self) -> usize;
-}
-
-/// A searcher implementation for DirectSearch types.
-#[derive(Debug,Copy,Clone)]
-pub struct DirectSearcher<'a, D> {
-    haystack: &'a str,
-    offset: usize,
-    direct_search: D,
-}
-
-unsafe impl<'a, D> Searcher<'a> for DirectSearcher<'a, D>
-    where D: DirectSearch
+impl<'a, F> Pattern<'a> for AsciiCharsWithFallback<F>
+    where F: Fn(u8) -> bool
 {
-    fn haystack(&self) -> &'a str { self.haystack }
+    type Searcher = DirectSearcher<'a, AsciiCharsWithFallback<F>>;
 
-    #[inline]
-    fn next(&mut self) -> SearchStep {
-        if self.offset >= self.haystack.len() { return SearchStep::Done }
+    fn into_searcher(self, haystack: &'a str) -> DirectSearcher<'a, AsciiCharsWithFallback<F>> {
+        // Assert that we are searching for only ascii
+        debug_assert!(self.inner.needle & !ASCII_WORD_MASK == 0);
+        debug_assert!(self.inner.needle_hi & !ASCII_WORD_MASK == 0);
 
-        let left_to_search = &self.haystack[self.offset..]; // TODO: unchecked_slice?
-        let idx = self.direct_search.find(left_to_search);
-
-        // If there's no match, then the rest of the string should be
-        // returned.
-        let idx = idx.unwrap_or(self.haystack.len());
-
-        let (res, next_offset) = if idx == 0 {
-            // A match occurs at the beginning of the string
-            let next = self.offset + self.direct_search.len();
-            (SearchStep::Match(self.offset, next), next)
-        } else {
-            // A match occurs somewhere further in the string
-            let next = self.offset + idx;
-            (SearchStep::Reject(self.offset, next), next)
-        };
-
-        self.offset = next_offset;
-        res
+        DirectSearcher { haystack: haystack, offset: 0, direct_search: self }
     }
 }
 
@@ -394,44 +348,6 @@ impl<'a> Substring<'a> {
             needle_len: min(needle.len(), 16) as u8,
         }
     }
-}
-
-unsafe impl<'a> DirectSearch for Substring<'a> {
-    #[cfg(all(feature = "unstable", target_arch = "x86_64"))]
-    fn find(&self, haystack: &str) -> Option<usize> {
-        // It's ok to treat the haystack as a bag of bytes because the
-        // needle is guaranteed to only match complete UTF-8
-        // characters. Whenever a match is found, we double-check the
-        // match position with the complete needle.
-
-        let needle = self.raw.as_bytes();
-        let haystack = haystack.as_bytes();
-
-        if needle.len() == 0 && haystack.len() == 0 {
-            return Some(0);
-        }
-
-        let searcher = UnalignedByteSliceHandler { operation: *self };
-        let mut offset = 0;
-
-        while let Some(pos) = searcher.find(&haystack[offset..]) {
-            // Found a match, but is it really?
-            if haystack[pos+offset..].starts_with(needle) {
-                return Some(offset + pos)
-            }
-
-            // Skip past this false positive
-            offset += pos + 1;
-        }
-        None
-    }
-
-    #[cfg(not(all(feature = "unstable", target_arch = "x86_64")))]
-    fn find(&self, haystack: &str) -> Option<usize> {
-        haystack.find(self.raw)
-    }
-
-    fn len(&self) -> usize { self.raw.len() }
 }
 
 impl<'a> PackedCompareOperation for Substring<'a> {
@@ -479,11 +395,95 @@ impl<'a> PackedCompareOperation for Substring<'a> {
     }
 }
 
+unsafe impl<'a> DirectSearch for Substring<'a> {
+    #[cfg(all(feature = "unstable", target_arch = "x86_64"))]
+    fn find(&self, haystack: &str) -> Option<usize> {
+        // It's ok to treat the haystack as a bag of bytes because the
+        // needle is guaranteed to only match complete UTF-8
+        // characters. Whenever a match is found, we double-check the
+        // match position with the complete needle.
+
+        let needle = self.raw.as_bytes();
+        let haystack = haystack.as_bytes();
+
+        if needle.len() == 0 && haystack.len() == 0 {
+            return Some(0);
+        }
+
+        let searcher = UnalignedByteSliceHandler { operation: *self };
+        let mut offset = 0;
+
+        while let Some(pos) = searcher.find(&haystack[offset..]) {
+            // Found a match, but is it really?
+            if haystack[pos+offset..].starts_with(needle) {
+                return Some(offset + pos)
+            }
+
+            // Skip past this false positive
+            offset += pos + 1;
+        }
+        None
+    }
+
+    #[cfg(not(all(feature = "unstable", target_arch = "x86_64")))]
+    fn find(&self, haystack: &str) -> Option<usize> {
+        haystack.find(self.raw)
+    }
+
+    fn len(&self) -> usize { self.raw.len() }
+}
+
 impl<'a> Pattern<'a> for Substring<'a> {
     type Searcher = DirectSearcher<'a, Substring<'a>>;
 
     fn into_searcher(self, haystack: &'a str) -> DirectSearcher<'a, Substring<'a>> {
         DirectSearcher { haystack: haystack, offset: 0, direct_search: self }
+    }
+}
+
+/// Types that return the index of the next match.
+// Do we really want to expose the trait like this?
+pub unsafe trait DirectSearch {
+    fn find(&self, haystack: &str) -> Option<usize>;
+    fn len(&self) -> usize;
+}
+
+/// A searcher implementation for DirectSearch types.
+#[derive(Debug,Copy,Clone)]
+pub struct DirectSearcher<'a, D> {
+    haystack: &'a str,
+    offset: usize,
+    direct_search: D,
+}
+
+unsafe impl<'a, D> Searcher<'a> for DirectSearcher<'a, D>
+    where D: DirectSearch
+{
+    fn haystack(&self) -> &'a str { self.haystack }
+
+    #[inline]
+    fn next(&mut self) -> SearchStep {
+        if self.offset >= self.haystack.len() { return SearchStep::Done }
+
+        let left_to_search = &self.haystack[self.offset..]; // TODO: unchecked_slice?
+        let idx = self.direct_search.find(left_to_search);
+
+        // If there's no match, then the rest of the string should be
+        // returned.
+        let idx = idx.unwrap_or(self.haystack.len());
+
+        let (res, next_offset) = if idx == 0 {
+            // A match occurs at the beginning of the string
+            let next = self.offset + self.direct_search.len();
+            (SearchStep::Match(self.offset, next), next)
+        } else {
+            // A match occurs somewhere further in the string
+            let next = self.offset + idx;
+            (SearchStep::Reject(self.offset, next), next)
+        };
+
+        self.offset = next_offset;
+        res
     }
 }
 
