@@ -153,6 +153,106 @@ impl<T> UnalignedByteSliceHandler<T>
     }
 }
 
+#[doc(hidden)]
+#[macro_export]
+macro_rules! ascii_chars_inner {
+    ($cnt:expr,
+     $c0:expr, $c1:expr, $c2:expr, $c3:expr,
+     $c4:expr, $c5:expr, $c6:expr, $c7:expr) => ({
+         let lo =
+             ($c0 as u64) <<  0 | ($c1 as u64) <<  8 | ($c2 as u64) << 16 | ($c3 as u64) << 24 |
+             ($c4 as u64) << 32 | ($c5 as u64) << 40 | ($c6 as u64) << 48 | ($c7 as u64) << 56;
+         let ac = $crate::AsciiChars::from_words(lo, 0, $cnt);
+         ac.with_fallback(move |c| {
+             c == $c0 as u8 || c == $c1 as u8 || c == $c2 as u8 || c == $c3 as u8 ||
+             c == $c4 as u8 || c == $c5 as u8 || c == $c6 as u8 || c == $c7 as u8
+         })
+     });
+    ($cnt:expr,
+     $c0:expr,   $c1:expr,  $c2:expr,  $c3:expr,
+     $c4:expr,   $c5:expr,  $c6:expr,  $c7:expr,
+     $c8:expr,   $c9:expr, $c10:expr, $c11:expr,
+     $c12:expr, $c13:expr, $c14:expr, $c15:expr) => ({
+         let lo =
+             ($c0 as u64) <<  0 | ($c1 as u64) <<  8 | ($c2 as u64) << 16 | ($c3 as u64) << 24 |
+             ($c4 as u64) << 32 | ($c5 as u64) << 40 | ($c6 as u64) << 48 | ($c7 as u64) << 56;
+         let hi =
+             ( $c8 as u64) <<  0 | ( $c9 as u64) <<  8 | ($c10 as u64) << 16 | ($c11 as u64) << 24 |
+             ($c12 as u64) << 32 | ($c13 as u64) << 40 | ($c14 as u64) << 48 | ($c15 as u64) << 56;
+         let ac = $crate::AsciiChars::from_words(lo, hi, $cnt);
+         ac.with_fallback(move |c| {
+             c ==  $c0 as u8 || c ==  $c1 as u8 || c ==  $c2 as u8 || c ==  $c3 as u8 ||
+             c ==  $c4 as u8 || c ==  $c5 as u8 || c ==  $c6 as u8 || c ==  $c7 as u8 ||
+             c ==  $c8 as u8 || c ==  $c9 as u8 || c == $c10 as u8 || c == $c11 as u8 ||
+             c == $c12 as u8 || c == $c13 as u8 || c == $c14 as u8 || c == $c15 as u8
+         })
+     });
+}
+
+/// A convenience constructor for an AsciiChars that automatically
+/// implements a fallback. Provide 1 to 16 characters.
+// Pad out undefined variables with duplicate values, hope that the
+// optimizer deduplicates them.
+#[macro_export]
+macro_rules! ascii_chars {
+    ($c0:expr) =>
+        (ascii_chars_inner!(1, $c0, $c0, $c0, $c0, $c0, $c0, $c0, $c0));
+    ($c0:expr, $c1:expr) =>
+        (ascii_chars_inner!(2, $c0, $c1, $c0, $c0, $c0, $c0, $c0, $c0));
+    ($c0:expr, $c1:expr, $c2:expr) =>
+        (ascii_chars_inner!(3, $c0, $c1, $c2, $c0, $c0, $c0, $c0, $c0));
+    ($c0:expr, $c1:expr, $c2:expr, $c3:expr) =>
+        (ascii_chars_inner!(4, $c0, $c1, $c2, $c3, $c0, $c0, $c0, $c0));
+    ($c0:expr, $c1:expr, $c2:expr, $c3:expr, $c4:expr) =>
+        (ascii_chars_inner!(5, $c0, $c1, $c2, $c3, $c4, $c0, $c0, $c0));
+    ($c0:expr, $c1:expr, $c2:expr, $c3:expr, $c4:expr, $c5:expr) =>
+        (ascii_chars_inner!(6, $c0, $c1, $c2, $c3, $c4, $c5, $c0, $c0));
+    ($c0:expr, $c1:expr, $c2:expr, $c3:expr, $c4:expr, $c5:expr, $c6:expr) =>
+        (ascii_chars_inner!(7, $c0, $c1, $c2, $c3, $c4, $c5, $c6, $c0));
+    ($c0:expr, $c1:expr, $c2:expr, $c3:expr, $c4:expr, $c5:expr, $c6:expr, $c7:expr) =>
+        (ascii_chars_inner!(8, $c0, $c1, $c2, $c3, $c4, $c5, $c6, $c7));
+
+    ($c0:expr, $c1:expr, $c2:expr, $c3:expr, $c4:expr, $c5:expr, $c6:expr, $c7:expr,
+     $c8:expr) =>
+        (ascii_chars_inner!(9, $c0, $c1, $c2, $c3, $c4, $c5, $c6, $c7,
+                       $c8, $c0, $c0, $c0, $c0, $c0, $c0, $c0));
+
+    ($c0:expr, $c1:expr, $c2:expr, $c3:expr, $c4:expr, $c5:expr, $c6:expr, $c7:expr,
+     $c8:expr, $c9:expr) =>
+        (ascii_chars_inner!(10, $c0, $c1, $c2, $c3, $c4, $c5, $c6, $c7,
+                        $c8, $c9, $c0, $c0, $c0, $c0, $c0, $c0));
+
+    ($c0:expr, $c1:expr,  $c2:expr, $c3:expr, $c4:expr, $c5:expr, $c6:expr, $c7:expr,
+     $c8:expr, $c9:expr, $c10:expr) =>
+        (ascii_chars_inner!(11, $c0, $c1,  $c2, $c3, $c4, $c5, $c6,$c7,
+                        $c8, $c9, $c10, $c0, $c0, $c0, $c0, $c0));
+
+    ($c0:expr, $c1:expr,  $c2:expr,  $c3:expr, $c4:expr, $c5:expr, $c6:expr, $c7:expr,
+     $c8:expr, $c9:expr, $c10:expr, $c11:expr) =>
+        (ascii_chars_inner!(12, $c0, $c1,  $c2,  $c3, $c4, $c5, $c6, $c7,
+                        $c8, $c9, $c10, $c11, $c0, $c0, $c0, $c0));
+
+    ($c0:expr, $c1:expr,  $c2:expr,  $c3:expr,  $c4:expr, $c5:expr, $c6:expr, $c7:expr,
+     $c8:expr, $c9:expr, $c10:expr, $c11:expr, $c12:expr) =>
+        (ascii_chars_inner!(13, $c0, $c1,  $c2,  $c3,  $c4, $c5, $c6, $c7,
+                        $c8, $c9, $c10, $c11, $c12, $c0, $c0, $c0));
+
+    ($c0:expr, $c1:expr,  $c2:expr,  $c3:expr,  $c4:expr,  $c5:expr, $c6:expr, $c7:expr,
+     $c8:expr, $c9:expr, $c10:expr, $c11:expr, $c12:expr, $c13:expr) =>
+        (ascii_chars_inner!(14, $c0, $c1,  $c2,  $c3,  $c4,  $c5, $c6, $c7,
+                        $c8, $c9, $c10, $c11, $c12, $c13, $c0, $c0));
+
+    ($c0:expr, $c1:expr,  $c2:expr,  $c3:expr,  $c4:expr,  $c5:expr,  $c6:expr, $c7:expr,
+     $c8:expr, $c9:expr, $c10:expr, $c11:expr, $c12:expr, $c13:expr, $c14:expr) =>
+        (ascii_chars_inner!(15, $c0, $c1,  $c2,  $c3,  $c4,  $c5,  $c6, $c7,
+                        $c8, $c9, $c10, $c11, $c12, $c13, $c14, $c0));
+
+    ($c0:expr, $c1:expr,  $c2:expr,  $c3:expr,  $c4:expr,  $c5:expr,  $c6:expr,  $c7:expr,
+     $c8:expr, $c9:expr, $c10:expr, $c11:expr, $c12:expr, $c13:expr, $c14:expr, $c15:expr) =>
+        (ascii_chars_inner!(16, $c0, $c1,  $c2,  $c3,  $c4,  $c5,  $c6,  $c7,
+                        $c8, $c9, $c10, $c11, $c12, $c13, $c14, $c15));
+}
+
 const MAXBYTES: u8 = 16;
 
 /// 8 ascii-only bytes
@@ -883,6 +983,11 @@ mod bench {
     }
 
     #[bench]
+    fn space_asciichars_macro(b: &mut test::Bencher) {
+        bench_space(b, |hs| hs.find(ascii_chars!(' ')))
+    }
+
+    #[bench]
     fn space_find_string(b: &mut test::Bencher) {
         bench_space(b, |hs| hs.find(" "))
     }
@@ -931,6 +1036,11 @@ mod bench {
     }
 
     #[bench]
+    fn xml_delim_3_asciichars_macro(b: &mut test::Bencher) {
+        bench_xml_delim_3(b, |hs| hs.find(ascii_chars!('<', '>', '&')))
+    }
+
+    #[bench]
     fn xml_delim_3_find_byte_closure(b: &mut test::Bencher) {
         bench_xml_delim_3(b, |hs| hs.as_bytes().iter().position(|&c| {
             c == b'<' || c == b'>' || c == b'&'
@@ -970,6 +1080,11 @@ mod bench {
         bench_xml_delim_5(b, |hs| hs.find(XML_DELIM_5.with_fallback(|c| {
             c == b'<' || c == b'>' || c == b'&' || c == b'\'' || c == b'"'
         })))
+    }
+
+    #[bench]
+    fn xml_delim_5_asciichars_macro(b: &mut test::Bencher) {
+        bench_xml_delim_5(b, |hs| hs.find(ascii_chars!('<', '>', '&', '\'', '"')))
     }
 
     #[bench]
