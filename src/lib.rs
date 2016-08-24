@@ -30,7 +30,7 @@
 
 use std::cmp::min;
 use std::fmt;
-use std::str::pattern::{Pattern,Searcher,SearchStep};
+use std::str::pattern::{Pattern, Searcher, SearchStep};
 
 trait PackedCompareOperation {
     // Returns a mask
@@ -59,7 +59,9 @@ impl<T> UnalignedByteSliceHandler<T>
     fn find(&self, haystack: &[u8]) -> Option<usize> {
         let mut len = haystack.len();
 
-        if len == 0 { return None }
+        if len == 0 {
+            return None;
+        }
 
         // The PCMPxSTRx instructions always read 16 bytes worth of
         // data. To avoid walking off the end of a page (and
@@ -110,7 +112,11 @@ impl<T> UnalignedByteSliceHandler<T>
 
     #[inline]
     #[cfg(all(feature = "unstable", target_arch = "x86_64"))]
-    fn initial_unaligned_byte_slice(&self, ptr: *const u8, offset: usize, len: usize) -> InitialMatch {
+    fn initial_unaligned_byte_slice(&self,
+                                    ptr: *const u8,
+                                    offset: usize,
+                                    len: usize)
+                                    -> InitialMatch {
         // We use the PCMPESTRM instruction on the 16-byte-aligned
         // block that contains the *start* of the byte slice. This
         // returns a mask of all the matching bytes. We can can then
@@ -298,7 +304,10 @@ impl AsciiChars {
     pub fn with_fallback<F>(self, fallback: F) -> AsciiCharsWithFallback<F>
         where F: Fn(u8) -> bool
     {
-        AsciiCharsWithFallback { inner: self, fallback: fallback }
+        AsciiCharsWithFallback {
+            inner: self,
+            fallback: fallback,
+        }
     }
 
     /// Find the index of the first character in the set.
@@ -311,8 +320,11 @@ impl AsciiChars {
 
 impl fmt::Debug for AsciiChars {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "AsciiChars {{ lo: 0x{:016x}, hi: 0x{:016x}, count: {} }}",
-               self.needle, self.needle_hi, self.count)
+        write!(f,
+               "AsciiChars {{ lo: 0x{:016x}, hi: 0x{:016x}, count: {} }}",
+               self.needle,
+               self.needle_hi,
+               self.count)
     }
 }
 
@@ -387,7 +399,9 @@ unsafe impl<F> DirectSearch for AsciiCharsWithFallback<F>
         haystack.as_bytes().iter().cloned().position(&self.fallback)
     }
 
-    fn len(&self) -> usize { 1 }
+    fn len(&self) -> usize {
+        1
+    }
 }
 
 impl<'a, F> Pattern<'a> for AsciiCharsWithFallback<F>
@@ -400,7 +414,11 @@ impl<'a, F> Pattern<'a> for AsciiCharsWithFallback<F>
         debug_assert!(self.inner.needle & !ASCII_WORD_MASK == 0);
         debug_assert!(self.inner.needle_hi & !ASCII_WORD_MASK == 0);
 
-        DirectSearcher { haystack: haystack, offset: 0, direct_search: self }
+        DirectSearcher {
+            haystack: haystack,
+            offset: 0,
+            direct_search: self,
+        }
     }
 }
 
@@ -502,8 +520,8 @@ unsafe impl<'a> DirectSearch for Substring<'a> {
 
         while let Some(pos) = searcher.find(&haystack[offset..]) {
             // Found a match, but is it really?
-            if haystack[pos+offset..].starts_with(needle) {
-                return Some(offset + pos)
+            if haystack[pos + offset..].starts_with(needle) {
+                return Some(offset + pos);
             }
 
             // Skip past this false positive
@@ -517,14 +535,20 @@ unsafe impl<'a> DirectSearch for Substring<'a> {
         haystack.find(self.raw)
     }
 
-    fn len(&self) -> usize { self.raw.len() }
+    fn len(&self) -> usize {
+        self.raw.len()
+    }
 }
 
 impl<'a> Pattern<'a> for Substring<'a> {
     type Searcher = DirectSearcher<'a, Substring<'a>>;
 
     fn into_searcher(self, haystack: &'a str) -> DirectSearcher<'a, Substring<'a>> {
-        DirectSearcher { haystack: haystack, offset: 0, direct_search: self }
+        DirectSearcher {
+            haystack: haystack,
+            offset: 0,
+            direct_search: self,
+        }
     }
 }
 
@@ -546,11 +570,15 @@ pub struct DirectSearcher<'a, D> {
 unsafe impl<'a, D> Searcher<'a> for DirectSearcher<'a, D>
     where D: DirectSearch
 {
-    fn haystack(&self) -> &'a str { self.haystack }
+    fn haystack(&self) -> &'a str {
+        self.haystack
+    }
 
     #[inline]
     fn next(&mut self) -> SearchStep {
-        if self.offset >= self.haystack.len() { return SearchStep::Done }
+        if self.offset >= self.haystack.len() {
+            return SearchStep::Done;
+        }
 
         let left_to_search = &self.haystack[self.offset..]; // TODO: unchecked_slice?
         let idx = self.direct_search.find(left_to_search);
@@ -581,13 +609,13 @@ mod test {
     extern crate rand;
 
     use super::{AsciiChars, Substring, DirectSearch};
-    use self::quickcheck::{quickcheck,Arbitrary,Gen};
-    use std::str::pattern::{Pattern,Searcher,SearchStep};
+    use self::quickcheck::{quickcheck, Arbitrary, Gen};
+    use std::str::pattern::{Pattern, Searcher, SearchStep};
     use std::cmp;
     #[cfg(all(feature = "unstable", target_arch = "x86_64"))]
-    use std::{slice,str,ptr};
+    use std::{slice, str, ptr};
 
-    pub const SPACE: AsciiChars       = AsciiChars::from_words(0x0000000000000020, 0, 1);
+    pub const SPACE: AsciiChars = AsciiChars::from_words(0x0000000000000020, 0, 1);
     // < > &
     pub const XML_DELIM_3: AsciiChars = AsciiChars::from_words(0x00000000003c3e26, 0, 3);
     // < > & ' "
@@ -630,7 +658,14 @@ mod test {
                 searcher.push(c.0 as u8);
                 chars[index] = c.0;
             }
-            s.find(searcher.with_fallback(|b| chars[..n].iter().position(|&c| c == b as char).is_some())) == s.find(&chars[..n])
+
+            let us = s.find(searcher.with_fallback(|b| {
+                chars[..n].iter().position(|&c| c == b as char).is_some()
+            }));
+
+            let find = s.find(&chars[..n]);
+
+            us == find
         }
         quickcheck(prop as fn(String, Vec<AsciiChar>) -> bool);
     }
@@ -783,14 +818,14 @@ mod test {
 
         unsafe {
             // Map two rw-accessible pages of anonymous memory
-            let first_page = libc::mmap(
-                /* addr   = */ 0 as *mut libc::c_void,
-                /* length = */ 2 * PAGE_SIZE as libc::size_t,
-                /* prot   = */ libc::PROT_READ | libc::PROT_WRITE,
-                /* flags  = */ libc::MAP_PRIVATE | MAP_ANONYMOUS,
-                /* fd     = */ -1,
-                /* offset = */ 0,
-                );
+            let addr = 0 as *mut libc::c_void;
+            let length = 2 * PAGE_SIZE as libc::size_t;
+            let prot = libc::PROT_READ | libc::PROT_WRITE;
+            let flags = libc::MAP_PRIVATE | MAP_ANONYMOUS;
+            let fd = -1;
+            let offset = 0;
+
+            let first_page = libc::mmap(addr, length, prot, flags, fd, offset);
             assert!(!first_page.is_null());
 
             let second_page = first_page.offset(PAGE_SIZE as isize);
@@ -798,11 +833,11 @@ mod test {
             if protect {
                 // Prohibit any access to the second page, so that any attempt
                 // to read or write it would trigger a segfault
-                let mprotect_retval = libc::mprotect(
-                    /* addr   = */ second_page,
-                    /* length = */ PAGE_SIZE as libc::size_t,
-                    /* prot   = */ libc::PROT_NONE,
-                    );
+                let addr = second_page;
+                let length = PAGE_SIZE as libc::size_t;
+                let prot = libc::PROT_NONE;
+
+                let mprotect_retval = libc::mprotect(addr, length, prot);
                 assert_eq!(0, mprotect_retval);
             }
 
@@ -907,14 +942,14 @@ mod test {
 
     #[test]
     fn substring_needle_is_longer_than_16_bytes() {
-        let needle   = "0123456789abcdefg";
+        let needle = "0123456789abcdefg";
         let haystack = "0123456789abcdefgh";
         assert_eq!(Some(0), Substring::new(needle).find(haystack));
     }
 
     #[test]
     fn substring_as_pattern() {
-        let needle   = "and";
+        let needle = "and";
         let haystack = "moats and boats and waterfalls";
         let parts: Vec<_> = haystack.split(Substring::new(needle)).collect();
         assert_eq!(&parts, &["moats ", " boats ", " waterfalls"]);
@@ -925,7 +960,7 @@ mod test {
 mod bench {
     extern crate test;
 
-    use super::test::{SPACE,XML_DELIM_3,XML_DELIM_5};
+    use super::test::{SPACE, XML_DELIM_3, XML_DELIM_5};
     use super::{Substring, DirectSearch};
     use std::iter;
 
@@ -1002,9 +1037,9 @@ mod bench {
 
     #[bench]
     fn xml_delim_3_asciichars_as_pattern(b: &mut test::Bencher) {
-        bench_xml_delim_3(b, |hs| hs.find(XML_DELIM_3.with_fallback(|c| {
-            c == b'<' || c == b'>' || c == b'&'
-        })))
+        bench_xml_delim_3(b, |hs| {
+            hs.find(XML_DELIM_3.with_fallback(|c| c == b'<' || c == b'>' || c == b'&'))
+        })
     }
 
     #[bench]
@@ -1014,9 +1049,9 @@ mod bench {
 
     #[bench]
     fn xml_delim_3_find_byte_closure(b: &mut test::Bencher) {
-        bench_xml_delim_3(b, |hs| hs.as_bytes().iter().position(|&c| {
-            c == b'<' || c == b'>' || c == b'&'
-        }))
+        bench_xml_delim_3(b, |hs| {
+            hs.as_bytes().iter().position(|&c| c == b'<' || c == b'>' || c == b'&')
+        })
     }
 
     #[bench]
@@ -1026,9 +1061,7 @@ mod bench {
 
     #[bench]
     fn xml_delim_3_find_char_closure(b: &mut test::Bencher) {
-        bench_xml_delim_3(b, |hs| hs.find(|c| {
-            c == '<' || c == '>' || c == '&'
-        }))
+        bench_xml_delim_3(b, |hs| hs.find(|c| c == '<' || c == '>' || c == '&'))
     }
 
     fn bench_xml_delim_5<F>(b: &mut test::Bencher, f: F)
@@ -1049,9 +1082,11 @@ mod bench {
 
     #[bench]
     fn xml_delim_5_asciichars_as_pattern(b: &mut test::Bencher) {
-        bench_xml_delim_5(b, |hs| hs.find(XML_DELIM_5.with_fallback(|c| {
-            c == b'<' || c == b'>' || c == b'&' || c == b'\'' || c == b'"'
-        })))
+        bench_xml_delim_5(b, |hs| {
+            hs.find(XML_DELIM_5.with_fallback(|c| {
+                c == b'<' || c == b'>' || c == b'&' || c == b'\'' || c == b'"'
+            }))
+        })
     }
 
     #[bench]
@@ -1061,9 +1096,11 @@ mod bench {
 
     #[bench]
     fn xml_delim_5_find_byte_closure(b: &mut test::Bencher) {
-        bench_xml_delim_3(b, |hs| hs.as_bytes().iter().position(|&c| {
-            c == b'<' || c == b'>' || c == b'&' || c == b'\'' || c == b'"'
-        }))
+        bench_xml_delim_3(b, |hs| {
+            hs.as_bytes()
+                .iter()
+                .position(|&c| c == b'<' || c == b'>' || c == b'&' || c == b'\'' || c == b'"')
+        })
     }
 
     #[bench]
@@ -1073,9 +1110,9 @@ mod bench {
 
     #[bench]
     fn xml_delim_5_find_char_closure(b: &mut test::Bencher) {
-        bench_xml_delim_5(b, |hs| hs.find(|c| {
-            c == '<' || c == '>' || c == '&' || c == '\'' || c == '"'
-        }))
+        bench_xml_delim_5(b, |hs| {
+            hs.find(|c| c == '<' || c == '>' || c == '&' || c == '\'' || c == '"')
+        })
     }
 
     fn bench_substring<F>(b: &mut test::Bencher, f: F)
