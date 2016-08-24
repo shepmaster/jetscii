@@ -581,7 +581,6 @@ mod test {
     extern crate rand;
 
     use super::{AsciiChars, Substring, DirectSearch};
-    use self::rand::Rng;
     use self::quickcheck::{quickcheck,Arbitrary,Gen};
     use std::str::pattern::{Pattern,Searcher,SearchStep};
     use std::cmp;
