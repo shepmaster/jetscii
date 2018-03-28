@@ -28,9 +28,17 @@
 //! assert_eq!(&colors, &["red", "blue", "green"]);
 //! ```
 
+#[cfg(test)]
+#[macro_use]
+extern crate lazy_static;
+
 use std::cmp::min;
 use std::fmt;
-use std::str::pattern::{Pattern, Searcher, SearchStep};
+use std::str::pattern::{Pattern, SearchStep, Searcher};
+
+mod v2;
+
+pub use v2::Bytes as BytesV2;
 
 trait PackedCompareOperation {
     // Returns a mask

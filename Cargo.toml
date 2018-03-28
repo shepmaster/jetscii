@@ -14,9 +14,11 @@ documentation = "https://shepmaster.github.io/jetscii/"
 license = "MIT"
 
 [features]
+benchmarks = []
 unstable = []
 
 [dev-dependencies]
-quickcheck = "*"
-libc = "*"
-rand = "*"
+quickcheck = "0.3"
+libc = "0.2"
+rand = "0.3"
+lazy_static = "1.0.0"
