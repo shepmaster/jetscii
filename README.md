@@ -45,14 +45,14 @@ reasonably fast but universally-supported methods.
 
 Searching a 5MiB string of `a`s with a single space at the end:
 
-| Method                                           | Speed     |
-|--------------------------------------------------|-----------|
-| **`str.find(AsciiChars)`**                       | 5719 MB/s |
-| `str.as_bytes().iter().position(|&v| v == b' ')` | 1620 MB/s |
-| `str.find(|c| c == ' ')`                         | 1090 MB/s |
-| `str.find(' ')`                                  | 1085 MB/s |
-| `str.find(&[' '][..])`                           |  602 MB/s |
-| `str.find(" ")`                                  |  293 MB/s |
+| Method                                             | Speed     |
+|----------------------------------------------------|-----------|
+| **`str.find(AsciiChars)`**                         | 5719 MB/s |
+| `str.as_bytes().iter().position(\|&v\| v == b' ')` | 1620 MB/s |
+| `str.find(\|c\| c == ' ')`                         | 1090 MB/s |
+| `str.find(' ')`                                    | 1085 MB/s |
+| `str.find(&[' '][..])`                             |  602 MB/s |
+| `str.find(" ")`                                    |  293 MB/s |
 
 ### Set of characters
 
@@ -61,8 +61,8 @@ Searching a 5MiB string of `a`s with a single ampersand at the end:
 | Method                                           | Speed     |
 |--------------------------------------------------|-----------|
 | **`str.find(AsciiChars)`**                       | 5688 MB/s |
-| `str.as_bytes().iter().position(|&v| ...)`       | 1620 MB/s |
-| `str.find(|c| ...)`                              | 1022 MB/s |
+| `str.as_bytes().iter().position(\|&v\| ...)`     | 1620 MB/s |
+| `str.find(\|c\| ...)`                            | 1022 MB/s |
 | `str.find(&['<', '>', '&'][..])`                 |  361 MB/s |
 
 ### Substrings
@@ -76,7 +76,7 @@ Searching a 5MiB string of `a`s with the string `xyzzy` at the end:
 
 ## Contributing
 
-1. Fork it ( https://github.com/shepmaster/jetscii/fork )
+1. Fork it (https://github.com/shepmaster/jetscii/fork)
 2. Create your feature branch (`git checkout -b my-new-feature`)
 3. Add a failing test.
 4. Add code to pass the test.
