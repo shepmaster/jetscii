@@ -15,6 +15,7 @@ license = "MIT"
 
 [features]
 benchmarks = []
+pattern = []
 unstable = []
 
 [dev-dependencies]

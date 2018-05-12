@@ -217,11 +217,8 @@ impl<'a> Misalignment<'a> {
 
 #[cfg(test)]
 mod test {
-    extern crate libc;
-    extern crate quickcheck;
-
-    use self::quickcheck::quickcheck;
-
+    use libc;
+    use quickcheck::quickcheck;
     use std::{ptr, str};
 
     use super::*;

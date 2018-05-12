@@ -8,6 +8,9 @@ mod simd;
 #[cfg(not(target_feature = "sse4.2"))]
 mod fallback;
 
+#[cfg(feature = "pattern")]
+mod pattern;
+
 pub struct Bytes<F>
 where
     F: Fn(u8) -> bool,
