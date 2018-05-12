@@ -38,6 +38,7 @@ use std::str::pattern::{Pattern, SearchStep, Searcher};
 
 mod v2;
 
+pub use v2::AsciiChars as AsciiCharsV2;
 pub use v2::Bytes as BytesV2;
 
 trait PackedCompareOperation {

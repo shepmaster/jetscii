@@ -74,7 +74,26 @@ where
     }
 }
 
-// pattern
+pub struct AsciiChars<F>(Bytes<F>)
+where
+    F: Fn(u8) -> bool;
+
+impl<F> AsciiChars<F>
+where
+    F: Fn(u8) -> bool,
+{
+    pub fn new(bytes: [u8; 16], len: i32, fallback: F) -> Self {
+        for &b in &bytes {
+            assert!(b < 128, "Cannot have non-ASCII bytes");
+        }
+        AsciiChars(Bytes::new(bytes, len, fallback))
+    }
+
+    #[inline]
+    pub fn find(&self, haystack: &str) -> Option<usize> {
+        self.0.find(haystack.as_bytes())
+    }
+}
 
 #[cfg(test)]
 mod test {}

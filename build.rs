@@ -22,6 +22,7 @@ fn v2_macros() {
         .unwrap_or_else(|e| panic!("Could not create {}: {}", base.display(), e));
 
     v2_macros_bytes(&mut f, &base);
+    v2_macros_ascii_chars(&mut f, &base);
 }
 
 fn v2_macros_bytes(f: &mut File, base: &Path) {
@@ -51,6 +52,39 @@ fn v2_macros_bytes(f: &mut File, base: &Path) {
         r#"
 #[macro_export]
 macro_rules! bytes {{
+{}}}
+"#,
+        arms
+    ).unwrap_or_else(|e| panic!("Could not write {}: {}", base.display(), e));
+}
+
+fn v2_macros_ascii_chars(f: &mut File, base: &Path) {
+    let arms: String = (1..=16)
+        .map(|max| {
+            let args: Vec<_> = (0..max).map(|i| format!("$b{:02}:expr", i)).collect();
+            let args = args.join(", ");
+
+            let arg_values: Vec<_> = (0..max).map(|i| format!("$b{:02} as u8", i)).collect();
+
+            let mut array = arg_values.clone();
+            array.extend((max..16).map(|_| String::from("0")));
+            let array = array.join(", ");
+
+            let closure_body: Vec<_> = arg_values.iter().map(|n| format!("{} == c", n)).collect();
+            let closure = format!("|c| {}", closure_body.join(" || "));
+
+            format!(
+                "({}) => ($crate::v2::AsciiChars::new([{}], {}, {}));\n",
+                args, array, max, closure
+            )
+        })
+        .collect();
+
+    write!(
+        f,
+        r#"
+#[macro_export]
+macro_rules! ascii_chars2 {{
 {}}}
 "#,
         arms
