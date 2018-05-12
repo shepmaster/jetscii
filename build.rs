@@ -50,6 +50,8 @@ fn v2_macros_bytes(f: &mut File, base: &Path) {
     write!(
         f,
         r#"
+/// A convenience constructor for a [`Bytes`] that automatically
+/// implements a fallback. Provide 1 to 16 characters.
 #[macro_export]
 macro_rules! bytes {{
 {}}}
@@ -83,6 +85,8 @@ fn v2_macros_ascii_chars(f: &mut File, base: &Path) {
     write!(
         f,
         r#"
+/// A convenience constructor for an [`AsciiChars`] that automatically
+/// implements a fallback. Provide 1 to 16 characters.
 #[macro_export]
 macro_rules! ascii_chars2 {{
 {}}}

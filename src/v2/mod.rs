@@ -11,6 +11,7 @@ mod fallback;
 #[cfg(feature = "pattern")]
 mod pattern;
 
+/// Searches a slice for a set of bytes. Up to 16 bytes may be used.
 pub struct Bytes<F>
 where
     F: Fn(u8) -> bool,
@@ -34,6 +35,12 @@ impl<F> Bytes<F>
 where
     F: Fn(u8) -> bool,
 {
+    /// Manual constructor; prefer using [`bytes!`] instead.
+    ///
+    /// Provide an array of bytes to search for, the number of
+    /// valid bytes provided, and a closure to use when the SIMD
+    /// intrinsics are not available. The closure **must** search for
+    /// the same bytes as in the array.
     #[allow(unused_variables)]
     pub /* const */ fn new(bytes: [u8; 16], len: i32, fallback: F) -> Self {
         Bytes {
@@ -47,6 +54,7 @@ where
         }
     }
 
+    /// Searches the slice for the first matching byte in the set.
     #[inline]
     pub fn find(&self, haystack: &[u8]) -> Option<usize> {
         // If we can tell at compile time that we have support,
@@ -77,8 +85,11 @@ where
     }
 }
 
+/// A convenience type that can be used in a constant or static.
 pub type BytesConst = Bytes<fn(u8) -> bool>;
 
+/// Searches a string for a set of ASCII characters. Up to 16
+/// characters may be used.
 pub struct AsciiChars<F>(Bytes<F>)
 where
     F: Fn(u8) -> bool;
@@ -87,19 +98,31 @@ impl<F> AsciiChars<F>
 where
     F: Fn(u8) -> bool,
 {
-    pub fn new(bytes: [u8; 16], len: i32, fallback: F) -> Self {
-        for &b in &bytes {
+    /// Manual constructor; prefer using [`ascii_chars2!`] instead.
+    ///
+    /// Provide an array of ASCII bytes to search for, the number of
+    /// valid bytes provided, and a closure to use when the SIMD
+    /// intrinsics are not available. The closure **must** search for
+    /// the same characters as in the array.
+    ///
+    /// ### Panics
+    ///
+    /// - If you provide a non-ASCII byte.
+    pub /* const */ fn new(chars: [u8; 16], len: i32, fallback: F) -> Self {
+        for &b in &chars {
             assert!(b < 128, "Cannot have non-ASCII bytes");
         }
-        AsciiChars(Bytes::new(bytes, len, fallback))
+        AsciiChars(Bytes::new(chars, len, fallback))
     }
 
+    /// Searches the string for the first matching ASCII byte in the set.
     #[inline]
     pub fn find(&self, haystack: &str) -> Option<usize> {
         self.0.find(haystack.as_bytes())
     }
 }
 
+/// A convenience type that can be used in a constant or static.
 pub type AsciiCharsConst = AsciiChars<fn(u8) -> bool>;
 
 #[cfg(all(test, feature = "benchmarks"))]
