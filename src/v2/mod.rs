@@ -77,6 +77,8 @@ where
     }
 }
 
+pub type BytesConst = Bytes<fn(u8) -> bool>;
+
 pub struct AsciiChars<F>(Bytes<F>)
 where
     F: Fn(u8) -> bool;
@@ -98,5 +100,134 @@ where
     }
 }
 
-#[cfg(test)]
-mod test {}
+pub type AsciiCharsConst = AsciiChars<fn(u8) -> bool>;
+
+#[cfg(all(test, feature = "benchmarks"))]
+mod bench {
+    extern crate test;
+
+    use super::*;
+
+    lazy_static! {
+        static ref SPACE: AsciiCharsConst = ascii_chars2!(b' ');
+        static ref XML_DELIM_3: AsciiCharsConst = ascii_chars2!(b'<', b'>', b'&');
+        static ref XML_DELIM_5: AsciiCharsConst = ascii_chars2!(b'<', b'>', b'&', b'\'', b'"');
+    }
+
+    fn prefix_string() -> String {
+        "a".repeat(5 * 1024 * 1024)
+    }
+
+    fn bench_space<F>(b: &mut test::Bencher, f: F)
+    where
+        F: Fn(&str) -> Option<usize>,
+    {
+        let mut haystack = prefix_string();
+        haystack.push(' ');
+
+        b.iter(|| test::black_box(f(&haystack)));
+        b.bytes = haystack.len() as u64;
+    }
+
+    #[bench]
+    fn space_ascii_chars(b: &mut test::Bencher) {
+        bench_space(b, |hs| SPACE.find(hs))
+    }
+
+    #[bench]
+    fn space_stdlib_find_string(b: &mut test::Bencher) {
+        bench_space(b, |hs| hs.find(" "))
+    }
+
+    #[bench]
+    fn space_stdlib_find_char(b: &mut test::Bencher) {
+        bench_space(b, |hs| hs.find(' '))
+    }
+
+    #[bench]
+    fn space_stdlib_find_char_set(b: &mut test::Bencher) {
+        bench_space(b, |hs| hs.find(&[' '][..]))
+    }
+
+    #[bench]
+    fn space_stdlib_find_closure(b: &mut test::Bencher) {
+        bench_space(b, |hs| hs.find(|c| c == ' '))
+    }
+
+    #[bench]
+    fn space_stdlib_iterator_position(b: &mut test::Bencher) {
+        bench_space(b, |hs| hs.as_bytes().iter().position(|&v| v == b' '))
+    }
+
+    fn bench_xml_delim_3<F>(b: &mut test::Bencher, f: F)
+    where
+        F: Fn(&str) -> Option<usize>,
+    {
+        let mut haystack = prefix_string();
+        haystack.push('&');
+
+        b.iter(|| test::black_box(f(&haystack)));
+        b.bytes = haystack.len() as u64;
+    }
+
+    #[bench]
+    fn xml_delim_3_ascii_chars(b: &mut test::Bencher) {
+        bench_xml_delim_3(b, |hs| XML_DELIM_3.find(hs))
+    }
+
+    #[bench]
+    fn xml_delim_3_stdlib_find_char_set(b: &mut test::Bencher) {
+        bench_xml_delim_3(b, |hs| hs.find(&['<', '>', '&'][..]))
+    }
+
+    #[bench]
+    fn xml_delim_3_stdlib_find_char_closure(b: &mut test::Bencher) {
+        bench_xml_delim_3(b, |hs| hs.find(|c| c == '<' || c == '>' || c == '&'))
+    }
+
+    #[bench]
+    fn xml_delim_3_stdlib_iterator_position(b: &mut test::Bencher) {
+        bench_xml_delim_3(b, |hs| {
+            hs.as_bytes()
+                .iter()
+                .position(|&c| c == b'<' || c == b'>' || c == b'&')
+        })
+    }
+
+    fn bench_xml_delim_5<F>(b: &mut test::Bencher, f: F)
+    where
+        F: Fn(&str) -> Option<usize>,
+    {
+        let mut haystack = prefix_string();
+        haystack.push('"');
+
+        b.iter(|| test::black_box(f(&haystack)));
+        b.bytes = haystack.len() as u64;
+    }
+
+    #[bench]
+    fn xml_delim_5_ascii_chars(b: &mut test::Bencher) {
+        bench_xml_delim_5(b, |hs| XML_DELIM_5.find(hs))
+    }
+
+    #[bench]
+    fn xml_delim_5_stdlib_find_char_set(b: &mut test::Bencher) {
+        bench_xml_delim_5(b, |hs| hs.find(&['<', '>', '&', '\'', '"'][..]))
+    }
+
+    #[bench]
+    fn xml_delim_5_stdlib_find_char_closure(b: &mut test::Bencher) {
+        bench_xml_delim_5(b, |hs| {
+            hs.find(|c| c == '<' || c == '>' || c == '&' || c == '\'' || c == '"')
+        })
+    }
+
+    #[bench]
+    fn xml_delim_5_stdlib_iterator_position(b: &mut test::Bencher) {
+        bench_xml_delim_3(b, |hs| {
+            hs.as_bytes()
+                .iter()
+                .position(|&c| c == b'<' || c == b'>' || c == b'&' || c == b'\'' || c == b'"')
+        })
+    }
+}
