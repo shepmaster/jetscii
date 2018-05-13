@@ -18,7 +18,7 @@ benchmarks = []
 pattern = []
 
 [dev-dependencies]
-quickcheck = "0.3"
+quickcheck = "0.6"
 libc = "0.2"
-rand = "0.3"
+rand = "0.4"
 lazy_static = "1.0.0"
