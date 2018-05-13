@@ -7,7 +7,8 @@
 //! ## Examples
 //!
 //! ### Searching for a set of ASCII characters
-//! ```
+//!
+//! ```rust
 //! #[macro_use]
 //! extern crate jetscii;
 //!
@@ -17,8 +18,10 @@
 //!     assert_eq!(first, Some(2));
 //! }
 //! ```
+//!
 //! ### Searching for a set of bytes
-//! ```
+//!
+//! ```rust
 //! #[macro_use]
 //! extern crate jetscii;
 //!
@@ -49,6 +52,52 @@
 //! # }
 //! }
 //! ```
+//!
+//! ## What's so special about this library?
+//!
+//! We use a particular set of x86-64 SSE 4.2 instructions (`PCMPESTRI`
+//! and `PCMPESTRM`) to gain great speedups. This method stays fast even
+//! when searching for a byte in a set of up to 16 choices.
+//!
+//! When the `PCMPxSTRx` instructions are not available, we fall back to
+//! reasonably fast but universally-supported methods.
+//!
+//! ## Benchmarks
+//!
+//! ### Single character
+//!
+//! Searching a 5MiB string of `a`s with a single space at the end for a space:
+//!
+//! | Method                                                      | Speed          |
+//! |-------------------------------------------------------------|----------------|
+//! | <code>ascii_chars!(' ').find(s)</code>                      | 5882 MB/s      |
+//! | <code>s.as_bytes().iter().position(\|&c\| c == b' ')</code> | 1514 MB/s      |
+//! | <code>s.find(" ")</code>                                    | 644 MB/s       |
+//! | <code>s.find(&[' '][..])</code>                             | 630 MB/s       |
+//! | **<code>s.find(' ')</code>**                                | **10330 MB/s** |
+//! | <code>s.find(\|c\| c == ' ')</code>                         | 786 MB/s       |
+//!
+//! ### Set of 3 characters
+//!
+//! Searching a 5MiB string of `a`s with a single ampersand at the end for `<`, `>`, and `&`:
+//!
+//! | Method                                                      | Speed         |
+//! |-------------------------------------------------------------|---------------|
+//! | **<code>ascii_chars!(/\* ... \*/).find(s)</code>**          | **6238 MB/s** |
+//! | <code>s.as_bytes().iter().position(\|&c\| /* ... */)</code> | 1158 MB/s     |
+//! | <code>s.find(&[/* ... */][..])</code>                       | 348 MB/s      |
+//! | <code>s.find(\|c\| /* ... */))</code>                       | 620 MB/s      |
+//!
+//! ### Set of 5 characters
+//!
+//! Searching a 5MiB string of `a`s with a single ampersand at the end for `<`, `>`, `&`, `'`, and `"`:
+//!
+//! | Method                                                      | Speed         |
+//! |-------------------------------------------------------------|---------------|
+//! | **<code>ascii_chars!(/\* ... \*/).find(s)</code>**          | **6303 MB/s** |
+//! | <code>s.as_bytes().iter().position(\|&c\| /* ... */)</code> | 485 MB/s      |
+//! | <code>s.find(&[/* ... */][..]))</code>                      | 282 MB/s      |
+//! | <code>s.find(\|c\| /* ... */)</code>                        | 785 MB/s      |
 
 #[cfg(test)]
 #[macro_use]
@@ -192,9 +241,9 @@ mod bench {
     use super::*;
 
     lazy_static! {
-        static ref SPACE: AsciiCharsConst = ascii_chars2!(b' ');
-        static ref XML_DELIM_3: AsciiCharsConst = ascii_chars2!(b'<', b'>', b'&');
-        static ref XML_DELIM_5: AsciiCharsConst = ascii_chars2!(b'<', b'>', b'&', b'\'', b'"');
+        static ref SPACE: AsciiCharsConst = ascii_chars!(' ');
+        static ref XML_DELIM_3: AsciiCharsConst = ascii_chars!('<', '>', '&');
+        static ref XML_DELIM_5: AsciiCharsConst = ascii_chars!('<', '>', '&', '\'', '"');
     }
 
     fn prefix_string() -> String {
