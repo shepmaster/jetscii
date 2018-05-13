@@ -1,11 +1,13 @@
 language: rust
 sudo: false
 rust:
+  - beta
   - nightly
-env:
-  matrix:
-  - FEATURES=""
-  - FEATURES="unstable"
+matrix:
+  include:
+    rust: nightly
+    env:
+      - FEATURES="pattern"
 script: |
   cargo build --verbose --features "${FEATURES}"
   cargo test --verbose --features "${FEATURES}"
