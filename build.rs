@@ -4,28 +4,28 @@ use std::io::prelude::*;
 use std::path::{Path, PathBuf};
 
 fn main() {
-    v2_macros();
-    v2_simd_macros();
+    macros();
+    simd_macros();
     println!("cargo:rerun-if-changed=build.rs");
 }
 
-fn v2_macros() {
+fn macros() {
     let mut base: PathBuf = env::var_os("OUT_DIR").unwrap().into();
     base.push("src");
 
     fs::create_dir_all(&base)
         .unwrap_or_else(|e| panic!("Could not create directory {}: {}", base.display(), e));
 
-    base.push("v2_macros.rs");
+    base.push("macros.rs");
 
     let mut f = File::create(&base)
         .unwrap_or_else(|e| panic!("Could not create {}: {}", base.display(), e));
 
-    v2_macros_bytes(&mut f, &base);
-    v2_macros_ascii_chars(&mut f, &base);
+    macros_bytes(&mut f, &base);
+    macros_ascii_chars(&mut f, &base);
 }
 
-fn v2_macros_bytes(f: &mut File, base: &Path) {
+fn macros_bytes(f: &mut File, base: &Path) {
     let arms: String = (1..=16)
         .map(|max| {
             let args: Vec<_> = (0..max).map(|i| format!("$b{:02}:expr", i)).collect();
@@ -41,7 +41,7 @@ fn v2_macros_bytes(f: &mut File, base: &Path) {
             let closure = format!("|c| {}", closure_body.join(" || "));
 
             format!(
-                "({}) => ($crate::v2::Bytes::new([{}], {}, {}));\n",
+                "({}) => ($crate::Bytes::new([{}], {}, {}));\n",
                 args, array, max, closure
             )
         })
@@ -60,7 +60,7 @@ macro_rules! bytes {{
     ).unwrap_or_else(|e| panic!("Could not write {}: {}", base.display(), e));
 }
 
-fn v2_macros_ascii_chars(f: &mut File, base: &Path) {
+fn macros_ascii_chars(f: &mut File, base: &Path) {
     let arms: String = (1..=16)
         .map(|max| {
             let args: Vec<_> = (0..max).map(|i| format!("$b{:02}:expr", i)).collect();
@@ -76,7 +76,7 @@ fn v2_macros_ascii_chars(f: &mut File, base: &Path) {
             let closure = format!("|c| {}", closure_body.join(" || "));
 
             format!(
-                "({}) => ($crate::v2::AsciiChars::new([{}], {}, {}));\n",
+                "({}) => ($crate::AsciiChars::new([{}], {}, {}));\n",
                 args, array, max, closure
             )
         })
@@ -88,17 +88,16 @@ fn v2_macros_ascii_chars(f: &mut File, base: &Path) {
 /// A convenience constructor for an [`AsciiChars`] that automatically
 /// implements a fallback. Provide 1 to 16 characters.
 #[macro_export]
-macro_rules! ascii_chars2 {{
+macro_rules! ascii_chars {{
 {}}}
 "#,
         arms
     ).unwrap_or_else(|e| panic!("Could not write {}: {}", base.display(), e));
 }
 
-fn v2_simd_macros() {
+fn simd_macros() {
     let mut base: PathBuf = env::var_os("OUT_DIR").unwrap().into();
     base.push("src");
-    base.push("v2");
 
     fs::create_dir_all(&base)
         .unwrap_or_else(|e| panic!("Could not create directory {}: {}", base.display(), e));
@@ -118,7 +117,7 @@ fn v2_simd_macros() {
             let array = array.join(", ");
 
             format!(
-                "({}) => ($crate::v2::simd::Fast::new([{}], {}));\n",
+                "({}) => ($crate::simd::Fast::new([{}], {}));\n",
                 args, array, max
             )
         })

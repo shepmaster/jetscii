@@ -84,7 +84,7 @@ mod test {
     #[test]
     fn works_as_find_does_for_single_characters() {
         fn prop(s: String, c: AsciiChar) -> bool {
-            let us = ascii_chars2!(c.0);
+            let us = ascii_chars!(c.0);
             let them = c.0 as char;
             s.find(us) == s.find(them)
         }
@@ -94,7 +94,7 @@ mod test {
     #[test]
     fn works_as_find_does_for_multiple_characters() {
         fn prop(s: String, (c1, c2, c3, c4): (AsciiChar, AsciiChar, AsciiChar, AsciiChar)) -> bool {
-            let us = ascii_chars2!(c1.0, c2.0, c3.0, c4.0);
+            let us = ascii_chars!(c1.0, c2.0, c3.0, c4.0);
             let them = &[c1.0 as char, c2.0 as char, c3.0 as char, c4.0 as char][..];
             s.find(us) == s.find(them)
         }
@@ -123,20 +123,20 @@ mod test {
 
     #[test]
     fn can_search_for_nul_bytes() {
-        assert_eq!(Some(1), "a\0".find(ascii_chars2!('\0')));
-        assert_eq!(Some(0), "\0".find(ascii_chars2!('\0')));
-        assert_eq!(None, "".find(ascii_chars2!('\0')));
+        assert_eq!(Some(1), "a\0".find(ascii_chars!('\0')));
+        assert_eq!(Some(0), "\0".find(ascii_chars!('\0')));
+        assert_eq!(None, "".find(ascii_chars!('\0')));
     }
 
     #[test]
     fn can_search_in_nul_bytes() {
-        assert_eq!(Some(1), "\0a".find(ascii_chars2!('a')));
-        assert_eq!(None, "\0".find(ascii_chars2!('a')));
+        assert_eq!(Some(1), "\0a".find(ascii_chars!('a')));
+        assert_eq!(None, "\0".find(ascii_chars!('a')));
     }
 
     #[test]
     fn pattern_does_not_backtrack_after_first() {
-        let mut searcher = ascii_chars2!(' ').into_searcher("hello w ");
+        let mut searcher = ascii_chars!(' ').into_searcher("hello w ");
         assert_eq!(SearchStep::Reject(0, 5), searcher.next());
         assert_eq!(SearchStep::Match(5, 6), searcher.next());
         assert_eq!(SearchStep::Reject(6, 7), searcher.next());

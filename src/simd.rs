@@ -8,7 +8,7 @@ use std::{
     slice,
 };
 
-include!(concat!(env!("OUT_DIR"), "/src/v2/simd_macros.rs"));
+include!(concat!(env!("OUT_DIR"), "/src/simd_macros.rs"));
 
 const BYTES_PER_OPERATION: usize = 16;
 
