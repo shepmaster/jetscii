@@ -1,11 +1,11 @@
 [package]
 name = "jetscii"
-version = "0.3.1"
+version = "0.4.0"
 authors = ["Jake Goulding <jake.goulding@gmail.com>"]
 
-description = "A tiny library to efficiently search strings for substrings or sets of ASCII characters."
+description = "A tiny library to efficiently search strings and byte slices for sets of ASCII characters or bytes."
 readme = "README.md"
-keywords = ["string", "ascii", "search", "substring"]
+keywords = ["string", "bytes", "ascii", "search"]
 
 homepage = "https://github.com/shepmaster/jetscii"
 repository = "https://github.com/shepmaster/jetscii"
@@ -14,9 +14,11 @@ documentation = "https://shepmaster.github.io/jetscii/"
 license = "MIT"
 
 [features]
-unstable = []
+benchmarks = []
+pattern = []
 
 [dev-dependencies]
-quickcheck = "*"
-libc = "*"
-rand = "*"
+quickcheck = "0.3"
+libc = "0.2"
+rand = "0.3"
+lazy_static = "1.0.0"
