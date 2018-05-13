@@ -1,11 +1,10 @@
 # Jetscii
 
-A tiny library to efficiently search strings for substrings or sets of
-ASCII characters.
+A tiny library to efficiently search strings for sets of ASCII
+characters or byte slices for sets of bytes.
 
-[![Build Status](https://travis-ci.org/shepmaster/jetscii.svg)](https://travis-ci.org/shepmaster/jetscii) [![Current Version](http://meritbadge.herokuapp.com/jetscii)](https://crates.io/crates/jetscii)
+[![Build Status](https://travis-ci.org/shepmaster/jetscii.svg)](https://travis-ci.org/shepmaster/jetscii) [![Current Version](http://meritbadge.herokuapp.com/jetscii)](https://crates.io/crates/jetscii) [![Documentation](https://docs.rs/jetscii/badge.svg)][docs]
 
-[Documentation](https://shepmaster.github.io/jetscii/)
 
 ## Examples
 
@@ -17,62 +16,27 @@ extern crate jetscii;
 
 fn main() {
     let part_number = "86-J52:rev1";
-    let parts: Vec<_> = part_number.split(ascii_chars!('-', ':')).collect();
-    assert_eq!(&parts, &["86", "J52", "rev1"]);
+    let first = ascii_chars!('-', ':').find(part_number);
+    assert_eq!(first, Some(2));
 }
 ```
 
-### Searching for a substring
+### Searching for a set of bytes
 
 ```rust
-use jetscii::Substring;
-let colors: Vec<_> = "red, blue, green".split(Substring::new(", ")).collect();
-assert_eq!(&colors, &["red", "blue", "green"]);
+#[macro_use]
+extern crate jetscii;
+
+fn main() {
+    let raw_data = [0x00, 0x01, 0x10, 0xFF, 0x42];
+    let first = bytes!(0x01, 0x10).find(&raw_data);
+    assert_eq!(first, Some(1));
+}
 ```
 
-## What's so special about this library?
+Check out [the documentation][docs] for information about feature flags and benchmarks.
 
-We use a particular set of x86-64 SSE 4.2 instructions (`PCMPESTRI`
-and `PCMPESTRM`) to gain great speedups. This method stays fast even
-when searching for a character in a set of up to 16 choices.
-
-When the `PCMPxSTRx` instructions are not available, we fall back to
-reasonably fast but universally-supported methods.
-
-## Benchmarks
-
-### Single character
-
-Searching a 5MiB string of `a`s with a single space at the end:
-
-| Method                                             | Speed     |
-|----------------------------------------------------|-----------|
-| **`str.find(AsciiChars)`**                         | 5719 MB/s |
-| `str.as_bytes().iter().position(\|&v\| v == b' ')` | 1620 MB/s |
-| `str.find(\|c\| c == ' ')`                         | 1090 MB/s |
-| `str.find(' ')`                                    | 1085 MB/s |
-| `str.find(&[' '][..])`                             |  602 MB/s |
-| `str.find(" ")`                                    |  293 MB/s |
-
-### Set of characters
-
-Searching a 5MiB string of `a`s with a single ampersand at the end:
-
-| Method                                           | Speed     |
-|--------------------------------------------------|-----------|
-| **`str.find(AsciiChars)`**                       | 5688 MB/s |
-| `str.as_bytes().iter().position(\|&v\| ...)`     | 1620 MB/s |
-| `str.find(\|c\| ...)`                            | 1022 MB/s |
-| `str.find(&['<', '>', '&'][..])`                 |  361 MB/s |
-
-### Substrings
-
-Searching a 5MiB string of `a`s with the string `xyzzy` at the end:
-
-| Method                                           | Speed     |
-|--------------------------------------------------|-----------|
-| **`str.find(Substring::new("xyzzy"))`**          | 5017 MB/s |
-| str.find("xyzzy")                                | 3837 MB/s |
+[docs]: https://docs.rs/jetscii/
 
 ## Contributing
 
