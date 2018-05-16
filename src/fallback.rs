@@ -20,3 +20,19 @@ where
         haystack.iter().cloned().position(&self.fallback)
     }
 }
+
+pub struct ByteSubstring<'a> {
+    needle: &'a [u8],
+}
+
+impl<'a> ByteSubstring<'a> {
+    pub /* const */ fn new(needle: &'a[u8]) -> Self {
+        ByteSubstring { needle }
+    }
+
+    pub fn find(&self, haystack: &[u8]) -> Option<usize> {
+        haystack
+            .windows(self.needle.len())
+            .position(|window| window == self.needle)
+    }
+}

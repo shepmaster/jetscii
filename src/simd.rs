@@ -3,7 +3,9 @@
 // Everything in this module assumes that the SSE 4.2 feature is available.
 
 use std::{
-    arch::x86_64::{_mm_cmpestrc, _mm_cmpestri, _mm_cmpestrm, __m128i, _mm_loadu_si128},
+    arch::x86_64::{
+        __m128i, _mm_cmpestrc, _mm_cmpestri, _mm_cmpestrm, _mm_loadu_si128, _SIDD_CMP_EQUAL_ORDERED,
+    },
     cmp::min,
     slice,
 };
@@ -244,6 +246,56 @@ impl<'b> PackedCompareControl for &'b Bytes {
     }
 }
 
+pub struct ByteSubstring<'a> {
+    complete_needle: &'a [u8],
+    needle: __m128i,
+    needle_len: i32,
+}
+
+impl<'a> ByteSubstring<'a> {
+    pub /* const */ fn new(needle: &'a[u8]) -> Self {
+        use std::cmp;
+
+        let mut simd_needle = [0; 16];
+        let len = cmp::min(simd_needle.len(), needle.len());
+        simd_needle[..len].copy_from_slice(&needle[..len]);
+        ByteSubstring {
+            complete_needle: needle,
+            needle: unsafe { TransmuteToSimd { bytes: simd_needle }.simd },
+            needle_len: len as i32,
+        }
+    }
+
+    #[inline]
+    #[target_feature(enable = "sse4.2")]
+    pub unsafe fn find(&self, haystack: &[u8]) -> Option<usize> {
+        let mut offset = 0;
+
+        while let Some(idx) = find(PackedCompare(self), &haystack[offset..]) {
+            let abs_offset = offset + idx;
+            // Found a match, but is it really?
+            if haystack[abs_offset..].starts_with(self.complete_needle) {
+                return Some(abs_offset);
+            }
+
+            // Skip past this false positive
+            offset += idx + 1;
+        }
+
+        None
+    }
+}
+
+impl<'a, 'b> PackedCompareControl for &'b ByteSubstring<'a> {
+    const CONTROL_BYTE: i32 = _SIDD_CMP_EQUAL_ORDERED;
+    fn needle(&self) -> __m128i {
+        self.needle
+    }
+    fn needle_len(&self) -> i32 {
+        self.needle_len
+    }
+}
+
 // TODO: Does x86 actually support this instruction?
 
 #[cfg(test)]
@@ -262,6 +314,7 @@ mod test {
 
     trait SliceFindPolyfill<T> {
         fn find_any(&self, needles: &[T]) -> Option<usize>;
+        fn find_seq(&self, needle: &[T]) -> Option<usize>;
     }
 
     impl<T> SliceFindPolyfill<T> for [T]
@@ -270,6 +323,10 @@ mod test {
     {
         fn find_any(&self, needles: &[T]) -> Option<usize> {
             self.iter().position(|c| needles.contains(c))
+        }
+
+        fn find_seq(&self, needle: &[T]) -> Option<usize> {
+            (0..self.len()).find(|&l| self[l..].starts_with(needle))
         }
     }
 
@@ -432,6 +489,90 @@ mod test {
             assert_eq!(Some(0), XML_DELIM_5.find(b"'"));
             assert_eq!(Some(0), XML_DELIM_5.find(b"\""));
             assert_eq!(None, XML_DELIM_5.find(b""));
+        }
+    }
+
+    #[test]
+    fn works_as_find_does_for_byte_substrings() {
+        fn prop(needle: Vec<u8>, haystack: Vec<u8>) -> bool {
+            unsafe {
+                let s = ByteSubstring::new(&needle);
+                s.find(&haystack) == haystack.find_seq(&needle)
+            }
+        }
+        quickcheck(prop as fn(Vec<u8>, Vec<u8>) -> bool);
+    }
+
+    #[test]
+    fn byte_substring_is_found() {
+        unsafe {
+            let substr = ByteSubstring::new(b"zz");
+            assert_eq!(Some(0), substr.find(b"zz"));
+            assert_eq!(Some(1), substr.find(b"0zz"));
+            assert_eq!(Some(2), substr.find(b"01zz"));
+            assert_eq!(Some(3), substr.find(b"012zz"));
+            assert_eq!(Some(4), substr.find(b"0123zz"));
+            assert_eq!(Some(5), substr.find(b"01234zz"));
+            assert_eq!(Some(6), substr.find(b"012345zz"));
+            assert_eq!(Some(7), substr.find(b"0123456zz"));
+            assert_eq!(Some(8), substr.find(b"01234567zz"));
+            assert_eq!(Some(9), substr.find(b"012345678zz"));
+            assert_eq!(Some(10), substr.find(b"0123456789zz"));
+            assert_eq!(Some(11), substr.find(b"0123456789Azz"));
+            assert_eq!(Some(12), substr.find(b"0123456789ABzz"));
+            assert_eq!(Some(13), substr.find(b"0123456789ABCzz"));
+            assert_eq!(Some(14), substr.find(b"0123456789ABCDzz"));
+            assert_eq!(Some(15), substr.find(b"0123456789ABCDEzz"));
+            assert_eq!(Some(16), substr.find(b"0123456789ABCDEFzz"));
+            assert_eq!(Some(17), substr.find(b"0123456789ABCDEFGzz"));
+        }
+    }
+
+    #[test]
+    fn byte_substring_is_not_found() {
+        unsafe {
+            let substr = ByteSubstring::new(b"zz");
+            assert_eq!(None, substr.find(b""));
+            assert_eq!(None, substr.find(b"0"));
+            assert_eq!(None, substr.find(b"01"));
+            assert_eq!(None, substr.find(b"012"));
+            assert_eq!(None, substr.find(b"0123"));
+            assert_eq!(None, substr.find(b"01234"));
+            assert_eq!(None, substr.find(b"012345"));
+            assert_eq!(None, substr.find(b"0123456"));
+            assert_eq!(None, substr.find(b"01234567"));
+            assert_eq!(None, substr.find(b"012345678"));
+            assert_eq!(None, substr.find(b"0123456789"));
+            assert_eq!(None, substr.find(b"0123456789A"));
+            assert_eq!(None, substr.find(b"0123456789AB"));
+            assert_eq!(None, substr.find(b"0123456789ABC"));
+            assert_eq!(None, substr.find(b"0123456789ABCD"));
+            assert_eq!(None, substr.find(b"0123456789ABCDE"));
+            assert_eq!(None, substr.find(b"0123456789ABCDEF"));
+            assert_eq!(None, substr.find(b"0123456789ABCDEFG"));
+        }
+    }
+
+    #[test]
+    fn byte_substring_has_false_positive() {
+        unsafe {
+            // The PCMPESTRI instruction will mark the "a" before "ab" as
+            // a match because it cannot look beyond the 16 byte window
+            // of the haystack. We need to double-check any match to
+            // ensure it completely matches.
+
+            let substr = ByteSubstring::new(b"ab");
+            assert_eq!(Some(16), substr.find(b"aaaaaaaaaaaaaaaaab"))
+            //   this "a" is a false positive ~~~~~~~~~~~~~~~^
+        };
+    }
+
+    #[test]
+    fn byte_substring_needle_is_longer_than_16_bytes() {
+        unsafe {
+            let needle = b"0123456789abcdefg";
+            let haystack = b"0123456789abcdefgh";
+            assert_eq!(Some(0), ByteSubstring::new(needle).find(haystack));
         }
     }
 
