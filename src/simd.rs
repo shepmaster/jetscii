@@ -18,81 +18,82 @@ union TransmuteToSimd {
     u64s: [u64; 2],
 }
 
-pub struct Bytes {
-    needle: __m128i,
-    needle_len: i32,
+trait PackedCompareControl {
+    const CONTROL_BYTE: i32;
+
+    fn needle(&self) -> __m128i;
+    fn needle_len(&self) -> i32;
 }
 
-impl Bytes {
-    const CONTROL_BYTE: i32 = 0;
+/// The PCMPxSTRx instructions always read 16 bytes worth of
+/// data. Although the instructions handle unaligned memory access
+/// just fine, they might attempt to read off the end of a page
+/// and into a protected area.
+///
+/// To handle this case, we read in 16-byte aligned chunks with
+/// respect to the *end* of the byte slice. This makes the
+/// complicated part in searching the leftover bytes at the
+/// beginning of the byte slice.
+#[inline]
+#[target_feature(enable = "sse4.2")]
+unsafe fn find<C>(packed: PackedCompare<C>, mut haystack: &[u8]) -> Option<usize>
+where
+    C: PackedCompareControl,
+{
+    // FIXME: EXPLAIN SAFETY
 
-    pub /* const */ fn new(bytes: [u8; 16], needle_len: i32) -> Self {
-        Bytes {
-            needle: unsafe { TransmuteToSimd { bytes }.simd },
-            needle_len,
-        }
+    if haystack.is_empty() {
+        return None;
     }
 
-    /// The PCMPxSTRx instructions always read 16 bytes worth of
-    /// data. Although the instructions handle unaligned memory access
-    /// just fine, they might attempt to read off the end of a page
-    /// and into a protected area.
-    ///
-    /// To handle this case, we read in 16-byte aligned chunks with
-    /// respect to the *end* of the byte slice. This makes the
-    /// complicated part in searching the leftover bytes at the
-    /// beginning of the byte slice.
-    #[inline]
-    #[target_feature(enable = "sse4.2")]
-    pub unsafe fn find(&self, mut haystack: &[u8]) -> Option<usize> {
-        // FIXME: EXPLAIN SAFETY
+    let mut offset = 0;
 
-        if haystack.is_empty() {
-            return None;
-        }
-
-        let mut offset = 0;
-
-        if let Some(misaligned) = Misalignment::new(haystack) {
-            if let Some(location) = self.cmpestrm(misaligned.leading, misaligned.leading_junk) {
-                // Since the masking operation covers an entire
-                // 16-byte chunk, we have to see if the match occurred
-                // somewhere *after* our data
-                if location < haystack.len() {
-                    return Some(location);
-                }
+    if let Some(misaligned) = Misalignment::new(haystack) {
+        if let Some(location) = packed.cmpestrm(misaligned.leading, misaligned.leading_junk) {
+            // Since the masking operation covers an entire
+            // 16-byte chunk, we have to see if the match occurred
+            // somewhere *after* our data
+            if location < haystack.len() {
+                return Some(location);
             }
-
-            haystack = &haystack[misaligned.bytes_until_alignment..];
-            offset += misaligned.bytes_until_alignment;
         }
 
-        // TODO: try removing the 16-byte loop and check the disasm
-        let n_complete_chunks = haystack.len() / BYTES_PER_OPERATION;
-
-        // Getting the pointer once before the loop avoids the
-        // overhead of manipulating the length of the slice inside the
-        // loop.
-        let mut haystack_ptr = haystack.as_ptr();
-        let mut chunk_offset = 0;
-        for _ in 0..n_complete_chunks {
-            if let Some(location) = self.cmpestri(haystack_ptr, BYTES_PER_OPERATION as i32) {
-                return Some(offset + chunk_offset + location);
-            }
-
-            haystack_ptr = haystack_ptr.offset(BYTES_PER_OPERATION as isize);
-            chunk_offset += BYTES_PER_OPERATION;
-        }
-        haystack = &haystack[chunk_offset..];
-        offset += chunk_offset;
-
-        // By this point, the haystack's length must be less than 16
-        // bytes. It is thus reasonable to truncate it into an i32.
-        debug_assert!(haystack.len() < ::std::i32::MAX as usize);
-        self.cmpestri(haystack.as_ptr(), haystack.len() as i32)
-            .map(|loc| offset + loc)
+        haystack = &haystack[misaligned.bytes_until_alignment..];
+        offset += misaligned.bytes_until_alignment;
     }
 
+    // TODO: try removing the 16-byte loop and check the disasm
+    let n_complete_chunks = haystack.len() / BYTES_PER_OPERATION;
+
+    // Getting the pointer once before the loop avoids the
+    // overhead of manipulating the length of the slice inside the
+    // loop.
+    let mut haystack_ptr = haystack.as_ptr();
+    let mut chunk_offset = 0;
+    for _ in 0..n_complete_chunks {
+        if let Some(location) = packed.cmpestri(haystack_ptr, BYTES_PER_OPERATION as i32) {
+            return Some(offset + chunk_offset + location);
+        }
+
+        haystack_ptr = haystack_ptr.offset(BYTES_PER_OPERATION as isize);
+        chunk_offset += BYTES_PER_OPERATION;
+    }
+    haystack = &haystack[chunk_offset..];
+    offset += chunk_offset;
+
+    // By this point, the haystack's length must be less than 16
+    // bytes. It is thus reasonable to truncate it into an i32.
+    debug_assert!(haystack.len() < ::std::i32::MAX as usize);
+    packed
+        .cmpestri(haystack.as_ptr(), haystack.len() as i32)
+        .map(|loc| offset + loc)
+}
+
+struct PackedCompare<T>(T);
+impl<T> PackedCompare<T>
+where
+    T: PackedCompareControl,
+{
     #[inline]
     #[target_feature(enable = "sse4.2")]
     unsafe fn cmpestrm(&self, haystack: &[u8], leading_junk: usize) -> Option<usize> {
@@ -101,18 +102,18 @@ impl Bytes {
 
         // TODO: Check that these are coalesced
         let found = _mm_cmpestrc(
-            self.needle,
-            self.needle_len,
+            self.0.needle(),
+            self.0.needle_len(),
             haystack,
             BYTES_PER_OPERATION as i32,
-            Self::CONTROL_BYTE,
+            T::CONTROL_BYTE,
         );
         let mask = _mm_cmpestrm(
-            self.needle,
-            self.needle_len,
+            self.0.needle(),
+            self.0.needle_len(),
             haystack,
             BYTES_PER_OPERATION as i32,
-            Self::CONTROL_BYTE,
+            T::CONTROL_BYTE,
         );
 
         if found != 0 {
@@ -141,18 +142,18 @@ impl Bytes {
 
         // TODO: Check that these are coalesced
         let found = _mm_cmpestrc(
-            self.needle,
-            self.needle_len,
+            self.0.needle(),
+            self.0.needle_len(),
             haystack,
             haystack_len,
-            Self::CONTROL_BYTE,
+            T::CONTROL_BYTE,
         );
         let location = _mm_cmpestri(
-            self.needle,
-            self.needle_len,
+            self.0.needle(),
+            self.0.needle_len(),
             haystack,
             haystack_len,
-            Self::CONTROL_BYTE,
+            T::CONTROL_BYTE,
         );
 
         if found != 0 {
@@ -210,6 +211,36 @@ impl<'a> Misalignment<'a> {
             leading_junk,
             bytes_until_alignment,
         })
+    }
+}
+
+pub struct Bytes {
+    needle: __m128i,
+    needle_len: i32,
+}
+
+impl Bytes {
+    pub /* const */ fn new(bytes: [u8; 16], needle_len: i32) -> Self {
+        Bytes {
+            needle: unsafe { TransmuteToSimd { bytes }.simd },
+            needle_len,
+        }
+    }
+
+    #[inline]
+    #[target_feature(enable = "sse4.2")]
+    pub unsafe fn find(&self, haystack: &[u8]) -> Option<usize> {
+        find(PackedCompare(self), haystack)
+    }
+}
+
+impl<'b> PackedCompareControl for &'b Bytes {
+    const CONTROL_BYTE: i32 = 0;
+    fn needle(&self) -> __m128i {
+        self.needle
+    }
+    fn needle_len(&self) -> i32 {
+        self.needle_len
     }
 }
 
