@@ -120,6 +120,36 @@ mod fallback;
 #[cfg(feature = "pattern")]
 mod pattern;
 
+macro_rules! dispatch {
+    (simd: $simd:expr,fallback: $fallback:expr,) => {
+        // If we can tell at compile time that we have support,
+        // call the optimized code directly.
+        #[cfg(target_feature = "sse4.2")]
+        {
+            $simd
+        }
+
+        // If we can tell at compile time that we will *never* have
+        // support, call the fallback directly.
+        #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+        {
+            $fallback
+        }
+
+        // Otherwise, we will be run on a machine with or without
+        // support, so we perform runtime detection.
+        #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"),
+                  not(target_feature = "sse4.2")))]
+        {
+            if is_x86_feature_detected!("sse4.2") {
+                $simd
+            } else {
+                $fallback
+            }
+        }
+    };
+}
+
 /// Searches a slice for a set of bytes. Up to 16 bytes may be used.
 pub struct Bytes<F>
 where
@@ -166,30 +196,9 @@ where
     /// Searches the slice for the first matching byte in the set.
     #[inline]
     pub fn find(&self, haystack: &[u8]) -> Option<usize> {
-        // If we can tell at compile time that we have support,
-        // call the optimized code directly.
-        #[cfg(target_feature = "sse4.2")]
-        {
-            unsafe { self.simd.find(haystack) }
-        }
-
-        // If we can tell at compile time that we will *never* have
-        // support, call the fallback directly.
-        #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
-        {
-            self.fallback.find(haystack)
-        }
-
-        // Otherwise, we will be run on a machine with or without
-        // support, so we perform runtime detection.
-        #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"),
-                  not(target_feature = "sse4.2")))]
-        {
-            if is_x86_feature_detected!("sse4.2") {
-                unsafe { self.simd.find(haystack) }
-            } else {
-                self.fallback.find(haystack)
-            }
+        dispatch! {
+            simd: unsafe { self.simd.find(haystack) },
+            fallback: self.fallback.find(haystack),
         }
     }
 }
