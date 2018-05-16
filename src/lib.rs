@@ -128,7 +128,7 @@ where
     // Include this implementation only when compiling for x86_64 as
     // that's the only platform that we support.
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    fast: simd::Bytes,
+    simd: simd::Bytes,
 
     // If we are *guaranteed* to have SSE 4.2, then there's no reason
     // to have this implementation.
@@ -154,7 +154,7 @@ where
     pub /* const */ fn new(bytes: [u8; 16], len: i32, fallback: F) -> Self {
         Bytes {
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-            fast: simd::Bytes::new(bytes, len),
+            simd: simd::Bytes::new(bytes, len),
 
             #[cfg(not(target_feature = "sse4.2"))]
             fallback: fallback::Bytes::new(fallback),
@@ -170,7 +170,7 @@ where
         // call the optimized code directly.
         #[cfg(target_feature = "sse4.2")]
         {
-            unsafe { self.fast.find(haystack) }
+            unsafe { self.simd.find(haystack) }
         }
 
         // If we can tell at compile time that we will *never* have
@@ -186,7 +186,7 @@ where
                   not(target_feature = "sse4.2")))]
         {
             if is_x86_feature_detected!("sse4.2") {
-                unsafe { self.fast.find(haystack) }
+                unsafe { self.simd.find(haystack) }
             } else {
                 self.fallback.find(haystack)
             }
