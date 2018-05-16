@@ -18,16 +18,16 @@ union TransmuteToSimd {
     u64s: [u64; 2],
 }
 
-pub struct Fast {
+pub struct Bytes {
     needle: __m128i,
     needle_len: i32,
 }
 
-impl Fast {
+impl Bytes {
     const CONTROL_BYTE: i32 = 0;
 
     pub /* const */ fn new(bytes: [u8; 16], needle_len: i32) -> Self {
-        Fast {
+        Bytes {
             needle: unsafe { TransmuteToSimd { bytes }.simd },
             needle_len,
         }
@@ -224,9 +224,9 @@ mod test {
     use super::*;
 
     lazy_static! {
-        static ref SPACE: Fast = fast!(b' ');
-        static ref XML_DELIM_3: Fast = fast!(b'<', b'>', b'&');
-        static ref XML_DELIM_5: Fast = fast!(b'<', b'>', b'&', b'\'', b'"');
+        static ref SPACE: Bytes = simd_bytes!(b' ');
+        static ref XML_DELIM_3: Bytes = simd_bytes!(b'<', b'>', b'&');
+        static ref XML_DELIM_5: Bytes = simd_bytes!(b'<', b'>', b'&', b'\'', b'"');
     }
 
     trait SliceFindPolyfill<T> {
@@ -245,7 +245,7 @@ mod test {
     #[test]
     fn works_as_find_does_for_single_bytes() {
         fn prop(s: Vec<u8>, b: u8) -> bool {
-            unsafe { fast!(b).find(&s) == s.find(&[b]) }
+            unsafe { simd_bytes!(b).find(&s) == s.find(&[b]) }
         }
         quickcheck(prop as fn(Vec<u8>, u8) -> bool);
     }
@@ -253,7 +253,7 @@ mod test {
     #[test]
     fn works_as_find_does_for_multiple_bytes() {
         fn prop(s: Vec<u8>, (b1, b2, b3, b4): (u8, u8, u8, u8)) -> bool {
-            unsafe { fast!(b1, b2, b3, b4).find(&s) == s.find(&[b1, b2, b3, b4]) }
+            unsafe { simd_bytes!(b1, b2, b3, b4).find(&s) == s.find(&[b1, b2, b3, b4]) }
         }
         quickcheck(prop as fn(Vec<u8>, (u8, u8, u8, u8)) -> bool);
     }
@@ -268,7 +268,7 @@ mod test {
 
             needle.copy_from_slice(&b);
 
-            unsafe { Fast::new(needle, BYTES_PER_OPERATION as i32).find(&s) == s.find(&needle) }
+            unsafe { Bytes::new(needle, BYTES_PER_OPERATION as i32).find(&s) == s.find(&needle) }
         }
         quickcheck(prop as fn(Vec<u8>, Vec<u8>) -> bool);
     }
@@ -276,7 +276,7 @@ mod test {
     #[test]
     fn can_search_for_null_bytes() {
         unsafe {
-            let null = fast!(b'\0');
+            let null = simd_bytes!(b'\0');
             assert_eq!(Some(1), null.find(b"a\0"));
             assert_eq!(Some(0), null.find(b"\0"));
             assert_eq!(None, null.find(b""));
@@ -285,7 +285,7 @@ mod test {
 
     #[test]
     fn can_search_in_null_bytes() {
-        let a = fast!(b'a');
+        let a = simd_bytes!(b'a');
         unsafe {
             assert_eq!(Some(1), a.find(b"\0a"));
             assert_eq!(None, a.find(b"\0"));
@@ -465,7 +465,7 @@ mod test {
         let text = alloc_guarded_string("0123456789abcdef", true);
 
         // Will search for the last char
-        let needle = fast!(b'f');
+        let needle = simd_bytes!(b'f');
 
         // Check all suffixes of our 16-byte string
         for offset in 0..text.len() {

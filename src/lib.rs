@@ -128,12 +128,12 @@ where
     // Include this implementation only when compiling for x86_64 as
     // that's the only platform that we support.
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    fast: simd::Fast,
+    fast: simd::Bytes,
 
     // If we are *guaranteed* to have SSE 4.2, then there's no reason
     // to have this implementation.
     #[cfg(not(target_feature = "sse4.2"))]
-    fallback: fallback::Fallback<F>,
+    fallback: fallback::Bytes<F>,
 
     // Since we might not use the fallback implementation, we add this
     // to avoid unused type parameters.
@@ -154,10 +154,10 @@ where
     pub /* const */ fn new(bytes: [u8; 16], len: i32, fallback: F) -> Self {
         Bytes {
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-            fast: simd::Fast::new(bytes, len),
+            fast: simd::Bytes::new(bytes, len),
 
             #[cfg(not(target_feature = "sse4.2"))]
-            fallback: fallback::Fallback::new(fallback),
+            fallback: fallback::Bytes::new(fallback),
 
             _fallback: PhantomData,
         }
