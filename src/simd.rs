@@ -261,14 +261,14 @@ mod test {
     }
 
     trait SliceFindPolyfill<T> {
-        fn find(&self, needles: &[T]) -> Option<usize>;
+        fn find_any(&self, needles: &[T]) -> Option<usize>;
     }
 
     impl<T> SliceFindPolyfill<T> for [T]
     where
         T: PartialEq,
     {
-        fn find(&self, needles: &[T]) -> Option<usize> {
+        fn find_any(&self, needles: &[T]) -> Option<usize> {
             self.iter().position(|c| needles.contains(c))
         }
     }
@@ -276,7 +276,7 @@ mod test {
     #[test]
     fn works_as_find_does_for_single_bytes() {
         fn prop(s: Vec<u8>, b: u8) -> bool {
-            unsafe { simd_bytes!(b).find(&s) == s.find(&[b]) }
+            unsafe { simd_bytes!(b).find(&s) == s.find_any(&[b]) }
         }
         quickcheck(prop as fn(Vec<u8>, u8) -> bool);
     }
@@ -284,7 +284,7 @@ mod test {
     #[test]
     fn works_as_find_does_for_multiple_bytes() {
         fn prop(s: Vec<u8>, (b1, b2, b3, b4): (u8, u8, u8, u8)) -> bool {
-            unsafe { simd_bytes!(b1, b2, b3, b4).find(&s) == s.find(&[b1, b2, b3, b4]) }
+            unsafe { simd_bytes!(b1, b2, b3, b4).find(&s) == s.find_any(&[b1, b2, b3, b4]) }
         }
         quickcheck(prop as fn(Vec<u8>, (u8, u8, u8, u8)) -> bool);
     }
@@ -299,7 +299,9 @@ mod test {
 
             needle.copy_from_slice(&b);
 
-            unsafe { Bytes::new(needle, BYTES_PER_OPERATION as i32).find(&s) == s.find(&needle) }
+            unsafe {
+                Bytes::new(needle, BYTES_PER_OPERATION as i32).find(&s) == s.find_any(&needle)
+            }
         }
         quickcheck(prop as fn(Vec<u8>, Vec<u8>) -> bool);
     }
@@ -316,8 +318,8 @@ mod test {
 
     #[test]
     fn can_search_in_null_bytes() {
-        let a = simd_bytes!(b'a');
         unsafe {
+            let a = simd_bytes!(b'a');
             assert_eq!(Some(1), a.find(b"\0a"));
             assert_eq!(None, a.find(b"\0"));
         }
