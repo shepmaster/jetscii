@@ -1,6 +1,6 @@
 use std::str::pattern::{Pattern, SearchStep, Searcher};
 
-use super::AsciiChars;
+use super::{AsciiChars, Substring};
 
 trait PatternCore {
     fn find(&self, haystack: &str) -> Option<usize>;
@@ -99,6 +99,48 @@ where
     }
 }
 
+/// # Warning about empty substrings
+///
+/// This has different behavior from the standard library when the
+/// substring to search for is the empty string. It will never
+/// match. This behavior may change in the future to more closely
+/// align with the standard library.
+impl<'n, 'h> Pattern<'h> for Substring<'n> {
+    type Searcher = SubstringSearcher<'n, 'h>;
+
+    fn into_searcher(self, haystack: &'h str) -> Self::Searcher {
+        SubstringSearcher {
+            searcher: CoreSearcher::new(haystack),
+            finder: self,
+        }
+    }
+}
+
+pub struct SubstringSearcher<'n, 'h> {
+    searcher: CoreSearcher<'h>,
+    finder: Substring<'n>,
+}
+
+impl<'a, 'n> PatternCore for &'a Substring<'n> {
+    fn find(&self, haystack: &str) -> Option<usize> {
+        Substring::find(self, haystack)
+    }
+    fn len(&self) -> usize {
+        self.needle_len()
+    }
+}
+
+unsafe impl<'n, 'h> Searcher<'h> for SubstringSearcher<'n, 'h> {
+    fn haystack(&self) -> &'h str {
+        self.searcher.haystack
+    }
+
+    #[inline]
+    fn next(&mut self) -> SearchStep {
+        self.searcher.next(&self.finder)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use quickcheck::{quickcheck, Arbitrary, Gen};
@@ -178,6 +220,34 @@ mod test {
         assert_eq!(SearchStep::Match(5, 6), searcher.next());
         assert_eq!(SearchStep::Reject(6, 7), searcher.next());
         assert_eq!(SearchStep::Match(7, 8), searcher.next());
+        assert_eq!(SearchStep::Done, searcher.next());
+    }
+
+    #[test]
+    fn works_as_find_does_for_substrings() {
+        fn prop(needle: String, haystack: String) -> bool {
+            let us = Substring::new(&needle);
+            let them: &str = &needle;
+
+            needle.is_empty() || haystack.find(us) == haystack.find(them)
+        }
+        quickcheck(prop as fn(String, String) -> bool);
+    }
+
+    /// I'm not sure if it's worth it to try to match the standard
+    /// library behavior here. If so, we can use this test and remove
+    /// the `is_empty()` test in the quickcheck test above.
+    #[test]
+    #[ignore]
+    fn substring_of_an_empty_needle() {
+        let mut searcher = Substring::new("").into_searcher("abc");
+        assert_eq!(SearchStep::Match(0, 0), searcher.next());
+        assert_eq!(SearchStep::Reject(0, 1), searcher.next());
+        assert_eq!(SearchStep::Match(1, 1), searcher.next());
+        assert_eq!(SearchStep::Reject(1, 2), searcher.next());
+        assert_eq!(SearchStep::Match(2, 2), searcher.next());
+        assert_eq!(SearchStep::Reject(2, 3), searcher.next());
+        assert_eq!(SearchStep::Match(3, 3), searcher.next());
         assert_eq!(SearchStep::Done, searcher.next());
     }
 }

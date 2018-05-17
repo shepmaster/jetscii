@@ -266,6 +266,10 @@ impl<'a> ByteSubstring<'a> {
         }
     }
 
+    pub fn needle_len(&self) -> usize {
+        self.complete_needle.len()
+    }
+
     #[inline]
     #[target_feature(enable = "sse4.2")]
     pub unsafe fn find(&self, haystack: &[u8]) -> Option<usize> {

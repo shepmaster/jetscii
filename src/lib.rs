@@ -73,6 +73,16 @@
 //! }
 //! ```
 //!
+//! ```
+//! # #[cfg(feature = "pattern")] {
+//! use jetscii::Substring;
+//!
+//! let colors = "red, blue, green";
+//! let colors: Vec<_> = colors.split(Substring::new(", ")).collect();
+//! assert_eq!(&colors, &["red", "blue", "green"]);
+//! # }
+//! ```
+//!
 //! ## What's so special about this library?
 //!
 //! We use a particular set of x86-64 SSE 4.2 instructions (`PCMPESTRI`
@@ -296,6 +306,13 @@ impl<'a> ByteSubstring<'a> {
         }
     }
 
+    fn needle_len(&self) -> usize {
+        dispatch! {
+            simd: self.simd.needle_len(),
+            fallback: self.fallback.needle_len(),
+        }
+    }
+
     /// Searches the slice for the first occurence of the subslice.
     #[inline]
     pub fn find(&self, haystack: &[u8]) -> Option<usize> {
@@ -315,6 +332,10 @@ pub struct Substring<'a>(ByteSubstring<'a>);
 impl<'a> Substring<'a> {
     pub /* const */ fn new(needle: &'a str) -> Self {
         Substring(ByteSubstring::new(needle.as_bytes()))
+    }
+
+    fn needle_len(&self) -> usize {
+        self.0.needle_len()
     }
 
     /// Searches the string for the first occurence of the substring.

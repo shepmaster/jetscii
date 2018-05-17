@@ -30,6 +30,10 @@ impl<'a> ByteSubstring<'a> {
         ByteSubstring { needle }
     }
 
+    pub fn needle_len(&self) -> usize {
+        self.needle.len()
+    }
+
     pub fn find(&self, haystack: &[u8]) -> Option<usize> {
         haystack
             .windows(self.needle.len())
