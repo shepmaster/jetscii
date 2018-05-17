@@ -2,46 +2,35 @@ use std::str::pattern::{Pattern, SearchStep, Searcher};
 
 use super::AsciiChars;
 
-impl<'a, F> Pattern<'a> for AsciiChars<F>
-where
-    F: Fn(u8) -> bool,
-{
-    type Searcher = AsciiCharsSearcher<'a, F>;
-
-    fn into_searcher(self, haystack: &'a str) -> Self::Searcher {
-        AsciiCharsSearcher {
-            haystack: haystack,
-            offset: 0,
-            searcher: self,
-        }
-    }
+trait PatternCore {
+    fn find(&self, haystack: &str) -> Option<usize>;
+    fn len(&self) -> usize;
 }
 
-pub struct AsciiCharsSearcher<'a, F>
-where
-    F: Fn(u8) -> bool,
-{
-    haystack: &'a str,
+struct CoreSearcher<'h> {
+    haystack: &'h str,
     offset: usize,
-    searcher: AsciiChars<F>,
 }
 
-unsafe impl<'a, F> Searcher<'a> for AsciiCharsSearcher<'a, F>
-where
-    F: Fn(u8) -> bool,
-{
-    fn haystack(&self) -> &'a str {
-        self.haystack
+impl<'h> CoreSearcher<'h> {
+    fn new(haystack: &'h str) -> Self {
+        CoreSearcher {
+            haystack,
+            offset: 0,
+        }
     }
 
     #[inline]
-    fn next(&mut self) -> SearchStep {
+    fn next<F>(&mut self, finder: F) -> SearchStep
+    where
+        F: PatternCore,
+    {
         if self.offset >= self.haystack.len() {
             return SearchStep::Done;
         }
 
         let left_to_search = &self.haystack[self.offset..]; // TODO: unchecked_slice?
-        let idx = self.searcher.find(left_to_search);
+        let idx = finder.find(left_to_search);
 
         // If there's no match, then the rest of the string should be
         // returned.
@@ -49,7 +38,7 @@ where
 
         let (res, next_offset) = if idx == 0 {
             // A match occurs at the beginning of the string
-            let next = self.offset + 1;
+            let next = self.offset + finder.len();
             (SearchStep::Match(self.offset, next), next)
         } else {
             // A match occurs somewhere further in the string
@@ -59,6 +48,54 @@ where
 
         self.offset = next_offset;
         res
+    }
+}
+
+impl<'h, F> Pattern<'h> for AsciiChars<F>
+where
+    F: Fn(u8) -> bool,
+{
+    type Searcher = AsciiCharsSearcher<'h, F>;
+
+    fn into_searcher(self, haystack: &'h str) -> Self::Searcher {
+        AsciiCharsSearcher {
+            searcher: CoreSearcher::new(haystack),
+            finder: self,
+        }
+    }
+}
+
+impl<'a, F> PatternCore for &'a AsciiChars<F>
+where
+    F: Fn(u8) -> bool,
+{
+    fn find(&self, haystack: &str) -> Option<usize> {
+        AsciiChars::find(self, haystack)
+    }
+    fn len(&self) -> usize {
+        1
+    }
+}
+
+pub struct AsciiCharsSearcher<'h, F>
+where
+    F: Fn(u8) -> bool,
+{
+    searcher: CoreSearcher<'h>,
+    finder: AsciiChars<F>,
+}
+
+unsafe impl<'a, F> Searcher<'a> for AsciiCharsSearcher<'a, F>
+where
+    F: Fn(u8) -> bool,
+{
+    fn haystack(&self) -> &'a str {
+        self.searcher.haystack
+    }
+
+    #[inline]
+    fn next(&mut self) -> SearchStep {
+        self.searcher.next(&self.finder)
     }
 }
 
