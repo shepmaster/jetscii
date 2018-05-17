@@ -3,7 +3,9 @@
 // Everything in this module assumes that the SSE 4.2 feature is available.
 
 use std::{
-    arch::x86_64::{_mm_cmpestrc, _mm_cmpestri, _mm_cmpestrm, __m128i, _mm_loadu_si128},
+    arch::x86_64::{
+        __m128i, _mm_cmpestrc, _mm_cmpestri, _mm_cmpestrm, _mm_loadu_si128, _SIDD_CMP_EQUAL_ORDERED,
+    },
     cmp::min,
     slice,
 };
@@ -18,81 +20,82 @@ union TransmuteToSimd {
     u64s: [u64; 2],
 }
 
-pub struct Fast {
-    needle: __m128i,
-    needle_len: i32,
+trait PackedCompareControl {
+    const CONTROL_BYTE: i32;
+
+    fn needle(&self) -> __m128i;
+    fn needle_len(&self) -> i32;
 }
 
-impl Fast {
-    const CONTROL_BYTE: i32 = 0;
+/// The PCMPxSTRx instructions always read 16 bytes worth of
+/// data. Although the instructions handle unaligned memory access
+/// just fine, they might attempt to read off the end of a page
+/// and into a protected area.
+///
+/// To handle this case, we read in 16-byte aligned chunks with
+/// respect to the *end* of the byte slice. This makes the
+/// complicated part in searching the leftover bytes at the
+/// beginning of the byte slice.
+#[inline]
+#[target_feature(enable = "sse4.2")]
+unsafe fn find<C>(packed: PackedCompare<C>, mut haystack: &[u8]) -> Option<usize>
+where
+    C: PackedCompareControl,
+{
+    // FIXME: EXPLAIN SAFETY
 
-    pub /* const */ fn new(bytes: [u8; 16], needle_len: i32) -> Self {
-        Fast {
-            needle: unsafe { TransmuteToSimd { bytes }.simd },
-            needle_len,
-        }
+    if haystack.is_empty() {
+        return None;
     }
 
-    /// The PCMPxSTRx instructions always read 16 bytes worth of
-    /// data. Although the instructions handle unaligned memory access
-    /// just fine, they might attempt to read off the end of a page
-    /// and into a protected area.
-    ///
-    /// To handle this case, we read in 16-byte aligned chunks with
-    /// respect to the *end* of the byte slice. This makes the
-    /// complicated part in searching the leftover bytes at the
-    /// beginning of the byte slice.
-    #[inline]
-    #[target_feature(enable = "sse4.2")]
-    pub unsafe fn find(&self, mut haystack: &[u8]) -> Option<usize> {
-        // FIXME: EXPLAIN SAFETY
+    let mut offset = 0;
 
-        if haystack.is_empty() {
-            return None;
-        }
-
-        let mut offset = 0;
-
-        if let Some(misaligned) = Misalignment::new(haystack) {
-            if let Some(location) = self.cmpestrm(misaligned.leading, misaligned.leading_junk) {
-                // Since the masking operation covers an entire
-                // 16-byte chunk, we have to see if the match occurred
-                // somewhere *after* our data
-                if location < haystack.len() {
-                    return Some(location);
-                }
+    if let Some(misaligned) = Misalignment::new(haystack) {
+        if let Some(location) = packed.cmpestrm(misaligned.leading, misaligned.leading_junk) {
+            // Since the masking operation covers an entire
+            // 16-byte chunk, we have to see if the match occurred
+            // somewhere *after* our data
+            if location < haystack.len() {
+                return Some(location);
             }
-
-            haystack = &haystack[misaligned.bytes_until_alignment..];
-            offset += misaligned.bytes_until_alignment;
         }
 
-        // TODO: try removing the 16-byte loop and check the disasm
-        let n_complete_chunks = haystack.len() / BYTES_PER_OPERATION;
-
-        // Getting the pointer once before the loop avoids the
-        // overhead of manipulating the length of the slice inside the
-        // loop.
-        let mut haystack_ptr = haystack.as_ptr();
-        let mut chunk_offset = 0;
-        for _ in 0..n_complete_chunks {
-            if let Some(location) = self.cmpestri(haystack_ptr, BYTES_PER_OPERATION as i32) {
-                return Some(offset + chunk_offset + location);
-            }
-
-            haystack_ptr = haystack_ptr.offset(BYTES_PER_OPERATION as isize);
-            chunk_offset += BYTES_PER_OPERATION;
-        }
-        haystack = &haystack[chunk_offset..];
-        offset += chunk_offset;
-
-        // By this point, the haystack's length must be less than 16
-        // bytes. It is thus reasonable to truncate it into an i32.
-        debug_assert!(haystack.len() < ::std::i32::MAX as usize);
-        self.cmpestri(haystack.as_ptr(), haystack.len() as i32)
-            .map(|loc| offset + loc)
+        haystack = &haystack[misaligned.bytes_until_alignment..];
+        offset += misaligned.bytes_until_alignment;
     }
 
+    // TODO: try removing the 16-byte loop and check the disasm
+    let n_complete_chunks = haystack.len() / BYTES_PER_OPERATION;
+
+    // Getting the pointer once before the loop avoids the
+    // overhead of manipulating the length of the slice inside the
+    // loop.
+    let mut haystack_ptr = haystack.as_ptr();
+    let mut chunk_offset = 0;
+    for _ in 0..n_complete_chunks {
+        if let Some(location) = packed.cmpestri(haystack_ptr, BYTES_PER_OPERATION as i32) {
+            return Some(offset + chunk_offset + location);
+        }
+
+        haystack_ptr = haystack_ptr.offset(BYTES_PER_OPERATION as isize);
+        chunk_offset += BYTES_PER_OPERATION;
+    }
+    haystack = &haystack[chunk_offset..];
+    offset += chunk_offset;
+
+    // By this point, the haystack's length must be less than 16
+    // bytes. It is thus reasonable to truncate it into an i32.
+    debug_assert!(haystack.len() < ::std::i32::MAX as usize);
+    packed
+        .cmpestri(haystack.as_ptr(), haystack.len() as i32)
+        .map(|loc| offset + loc)
+}
+
+struct PackedCompare<T>(T);
+impl<T> PackedCompare<T>
+where
+    T: PackedCompareControl,
+{
     #[inline]
     #[target_feature(enable = "sse4.2")]
     unsafe fn cmpestrm(&self, haystack: &[u8], leading_junk: usize) -> Option<usize> {
@@ -101,18 +104,18 @@ impl Fast {
 
         // TODO: Check that these are coalesced
         let found = _mm_cmpestrc(
-            self.needle,
-            self.needle_len,
+            self.0.needle(),
+            self.0.needle_len(),
             haystack,
             BYTES_PER_OPERATION as i32,
-            Self::CONTROL_BYTE,
+            T::CONTROL_BYTE,
         );
         let mask = _mm_cmpestrm(
-            self.needle,
-            self.needle_len,
+            self.0.needle(),
+            self.0.needle_len(),
             haystack,
             BYTES_PER_OPERATION as i32,
-            Self::CONTROL_BYTE,
+            T::CONTROL_BYTE,
         );
 
         if found != 0 {
@@ -141,18 +144,18 @@ impl Fast {
 
         // TODO: Check that these are coalesced
         let found = _mm_cmpestrc(
-            self.needle,
-            self.needle_len,
+            self.0.needle(),
+            self.0.needle_len(),
             haystack,
             haystack_len,
-            Self::CONTROL_BYTE,
+            T::CONTROL_BYTE,
         );
         let location = _mm_cmpestri(
-            self.needle,
-            self.needle_len,
+            self.0.needle(),
+            self.0.needle_len(),
             haystack,
             haystack_len,
-            Self::CONTROL_BYTE,
+            T::CONTROL_BYTE,
         );
 
         if found != 0 {
@@ -213,6 +216,90 @@ impl<'a> Misalignment<'a> {
     }
 }
 
+pub struct Bytes {
+    needle: __m128i,
+    needle_len: i32,
+}
+
+impl Bytes {
+    pub /* const */ fn new(bytes: [u8; 16], needle_len: i32) -> Self {
+        Bytes {
+            needle: unsafe { TransmuteToSimd { bytes }.simd },
+            needle_len,
+        }
+    }
+
+    #[inline]
+    #[target_feature(enable = "sse4.2")]
+    pub unsafe fn find(&self, haystack: &[u8]) -> Option<usize> {
+        find(PackedCompare(self), haystack)
+    }
+}
+
+impl<'b> PackedCompareControl for &'b Bytes {
+    const CONTROL_BYTE: i32 = 0;
+    fn needle(&self) -> __m128i {
+        self.needle
+    }
+    fn needle_len(&self) -> i32 {
+        self.needle_len
+    }
+}
+
+pub struct ByteSubstring<'a> {
+    complete_needle: &'a [u8],
+    needle: __m128i,
+    needle_len: i32,
+}
+
+impl<'a> ByteSubstring<'a> {
+    pub /* const */ fn new(needle: &'a[u8]) -> Self {
+        use std::cmp;
+
+        let mut simd_needle = [0; 16];
+        let len = cmp::min(simd_needle.len(), needle.len());
+        simd_needle[..len].copy_from_slice(&needle[..len]);
+        ByteSubstring {
+            complete_needle: needle,
+            needle: unsafe { TransmuteToSimd { bytes: simd_needle }.simd },
+            needle_len: len as i32,
+        }
+    }
+
+    pub fn needle_len(&self) -> usize {
+        self.complete_needle.len()
+    }
+
+    #[inline]
+    #[target_feature(enable = "sse4.2")]
+    pub unsafe fn find(&self, haystack: &[u8]) -> Option<usize> {
+        let mut offset = 0;
+
+        while let Some(idx) = find(PackedCompare(self), &haystack[offset..]) {
+            let abs_offset = offset + idx;
+            // Found a match, but is it really?
+            if haystack[abs_offset..].starts_with(self.complete_needle) {
+                return Some(abs_offset);
+            }
+
+            // Skip past this false positive
+            offset += idx + 1;
+        }
+
+        None
+    }
+}
+
+impl<'a, 'b> PackedCompareControl for &'b ByteSubstring<'a> {
+    const CONTROL_BYTE: i32 = _SIDD_CMP_EQUAL_ORDERED;
+    fn needle(&self) -> __m128i {
+        self.needle
+    }
+    fn needle_len(&self) -> i32 {
+        self.needle_len
+    }
+}
+
 // TODO: Does x86 actually support this instruction?
 
 #[cfg(test)]
@@ -224,28 +311,33 @@ mod test {
     use super::*;
 
     lazy_static! {
-        static ref SPACE: Fast = fast!(b' ');
-        static ref XML_DELIM_3: Fast = fast!(b'<', b'>', b'&');
-        static ref XML_DELIM_5: Fast = fast!(b'<', b'>', b'&', b'\'', b'"');
+        static ref SPACE: Bytes = simd_bytes!(b' ');
+        static ref XML_DELIM_3: Bytes = simd_bytes!(b'<', b'>', b'&');
+        static ref XML_DELIM_5: Bytes = simd_bytes!(b'<', b'>', b'&', b'\'', b'"');
     }
 
     trait SliceFindPolyfill<T> {
-        fn find(&self, needles: &[T]) -> Option<usize>;
+        fn find_any(&self, needles: &[T]) -> Option<usize>;
+        fn find_seq(&self, needle: &[T]) -> Option<usize>;
     }
 
     impl<T> SliceFindPolyfill<T> for [T]
     where
         T: PartialEq,
     {
-        fn find(&self, needles: &[T]) -> Option<usize> {
+        fn find_any(&self, needles: &[T]) -> Option<usize> {
             self.iter().position(|c| needles.contains(c))
+        }
+
+        fn find_seq(&self, needle: &[T]) -> Option<usize> {
+            (0..self.len()).find(|&l| self[l..].starts_with(needle))
         }
     }
 
     #[test]
     fn works_as_find_does_for_single_bytes() {
         fn prop(s: Vec<u8>, b: u8) -> bool {
-            unsafe { fast!(b).find(&s) == s.find(&[b]) }
+            unsafe { simd_bytes!(b).find(&s) == s.find_any(&[b]) }
         }
         quickcheck(prop as fn(Vec<u8>, u8) -> bool);
     }
@@ -253,7 +345,7 @@ mod test {
     #[test]
     fn works_as_find_does_for_multiple_bytes() {
         fn prop(s: Vec<u8>, (b1, b2, b3, b4): (u8, u8, u8, u8)) -> bool {
-            unsafe { fast!(b1, b2, b3, b4).find(&s) == s.find(&[b1, b2, b3, b4]) }
+            unsafe { simd_bytes!(b1, b2, b3, b4).find(&s) == s.find_any(&[b1, b2, b3, b4]) }
         }
         quickcheck(prop as fn(Vec<u8>, (u8, u8, u8, u8)) -> bool);
     }
@@ -268,7 +360,9 @@ mod test {
 
             needle.copy_from_slice(&b);
 
-            unsafe { Fast::new(needle, BYTES_PER_OPERATION as i32).find(&s) == s.find(&needle) }
+            unsafe {
+                Bytes::new(needle, BYTES_PER_OPERATION as i32).find(&s) == s.find_any(&needle)
+            }
         }
         quickcheck(prop as fn(Vec<u8>, Vec<u8>) -> bool);
     }
@@ -276,7 +370,7 @@ mod test {
     #[test]
     fn can_search_for_null_bytes() {
         unsafe {
-            let null = fast!(b'\0');
+            let null = simd_bytes!(b'\0');
             assert_eq!(Some(1), null.find(b"a\0"));
             assert_eq!(Some(0), null.find(b"\0"));
             assert_eq!(None, null.find(b""));
@@ -285,8 +379,8 @@ mod test {
 
     #[test]
     fn can_search_in_null_bytes() {
-        let a = fast!(b'a');
         unsafe {
+            let a = simd_bytes!(b'a');
             assert_eq!(Some(1), a.find(b"\0a"));
             assert_eq!(None, a.find(b"\0"));
         }
@@ -402,6 +496,90 @@ mod test {
         }
     }
 
+    #[test]
+    fn works_as_find_does_for_byte_substrings() {
+        fn prop(needle: Vec<u8>, haystack: Vec<u8>) -> bool {
+            unsafe {
+                let s = ByteSubstring::new(&needle);
+                s.find(&haystack) == haystack.find_seq(&needle)
+            }
+        }
+        quickcheck(prop as fn(Vec<u8>, Vec<u8>) -> bool);
+    }
+
+    #[test]
+    fn byte_substring_is_found() {
+        unsafe {
+            let substr = ByteSubstring::new(b"zz");
+            assert_eq!(Some(0), substr.find(b"zz"));
+            assert_eq!(Some(1), substr.find(b"0zz"));
+            assert_eq!(Some(2), substr.find(b"01zz"));
+            assert_eq!(Some(3), substr.find(b"012zz"));
+            assert_eq!(Some(4), substr.find(b"0123zz"));
+            assert_eq!(Some(5), substr.find(b"01234zz"));
+            assert_eq!(Some(6), substr.find(b"012345zz"));
+            assert_eq!(Some(7), substr.find(b"0123456zz"));
+            assert_eq!(Some(8), substr.find(b"01234567zz"));
+            assert_eq!(Some(9), substr.find(b"012345678zz"));
+            assert_eq!(Some(10), substr.find(b"0123456789zz"));
+            assert_eq!(Some(11), substr.find(b"0123456789Azz"));
+            assert_eq!(Some(12), substr.find(b"0123456789ABzz"));
+            assert_eq!(Some(13), substr.find(b"0123456789ABCzz"));
+            assert_eq!(Some(14), substr.find(b"0123456789ABCDzz"));
+            assert_eq!(Some(15), substr.find(b"0123456789ABCDEzz"));
+            assert_eq!(Some(16), substr.find(b"0123456789ABCDEFzz"));
+            assert_eq!(Some(17), substr.find(b"0123456789ABCDEFGzz"));
+        }
+    }
+
+    #[test]
+    fn byte_substring_is_not_found() {
+        unsafe {
+            let substr = ByteSubstring::new(b"zz");
+            assert_eq!(None, substr.find(b""));
+            assert_eq!(None, substr.find(b"0"));
+            assert_eq!(None, substr.find(b"01"));
+            assert_eq!(None, substr.find(b"012"));
+            assert_eq!(None, substr.find(b"0123"));
+            assert_eq!(None, substr.find(b"01234"));
+            assert_eq!(None, substr.find(b"012345"));
+            assert_eq!(None, substr.find(b"0123456"));
+            assert_eq!(None, substr.find(b"01234567"));
+            assert_eq!(None, substr.find(b"012345678"));
+            assert_eq!(None, substr.find(b"0123456789"));
+            assert_eq!(None, substr.find(b"0123456789A"));
+            assert_eq!(None, substr.find(b"0123456789AB"));
+            assert_eq!(None, substr.find(b"0123456789ABC"));
+            assert_eq!(None, substr.find(b"0123456789ABCD"));
+            assert_eq!(None, substr.find(b"0123456789ABCDE"));
+            assert_eq!(None, substr.find(b"0123456789ABCDEF"));
+            assert_eq!(None, substr.find(b"0123456789ABCDEFG"));
+        }
+    }
+
+    #[test]
+    fn byte_substring_has_false_positive() {
+        unsafe {
+            // The PCMPESTRI instruction will mark the "a" before "ab" as
+            // a match because it cannot look beyond the 16 byte window
+            // of the haystack. We need to double-check any match to
+            // ensure it completely matches.
+
+            let substr = ByteSubstring::new(b"ab");
+            assert_eq!(Some(16), substr.find(b"aaaaaaaaaaaaaaaaab"))
+            //   this "a" is a false positive ~~~~~~~~~~~~~~~^
+        };
+    }
+
+    #[test]
+    fn byte_substring_needle_is_longer_than_16_bytes() {
+        unsafe {
+            let needle = b"0123456789abcdefg";
+            let haystack = b"0123456789abcdefgh";
+            assert_eq!(Some(0), ByteSubstring::new(needle).find(haystack));
+        }
+    }
+
     #[cfg(target_os = "macos")]
     const MAP_ANONYMOUS: libc::int32_t = libc::MAP_ANON;
 
@@ -465,7 +643,7 @@ mod test {
         let text = alloc_guarded_string("0123456789abcdef", true);
 
         // Will search for the last char
-        let needle = fast!(b'f');
+        let needle = simd_bytes!(b'f');
 
         // Check all suffixes of our 16-byte string
         for offset in 0..text.len() {

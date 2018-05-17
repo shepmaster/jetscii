@@ -117,7 +117,7 @@ fn simd_macros() {
             let array = array.join(", ");
 
             format!(
-                "({}) => ($crate::simd::Fast::new([{}], {}));\n",
+                "({}) => ($crate::simd::Bytes::new([{}], {}));\n",
                 args, array, max
             )
         })
@@ -127,7 +127,7 @@ fn simd_macros() {
         &mut f,
         r#"
 #[allow(unused_macros)]
-macro_rules! fast {{
+macro_rules! simd_bytes {{
 {}}}
 "#,
         arms

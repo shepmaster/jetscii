@@ -32,6 +32,26 @@
 //! }
 //! ```
 //!
+//! ### Searching for a substring
+//!
+//! ```
+//! use jetscii::Substring;
+//!
+//! let colors = "red, blue, green";
+//! let first = Substring::new(", ").find(colors);
+//! assert_eq!(first, Some(3));
+//! ```
+//!
+//! ### Searching for a subslice
+//!
+//! ```
+//! use jetscii::ByteSubstring;
+//!
+//! let raw_data = [0x00, 0x01, 0x10, 0xFF, 0x42];
+//! let first = ByteSubstring::new(&[0x10, 0xFF]).find(&raw_data);
+//! assert_eq!(first, Some(2));
+//! ```
+//!
 //! ## Using the pattern API
 //!
 //! If this crate is compiled with the unstable `pattern` feature
@@ -51,6 +71,16 @@
 //!     assert_eq!(&parts, &["86", "J52", "rev1"]);
 //! # }
 //! }
+//! ```
+//!
+//! ```
+//! # #[cfg(feature = "pattern")] {
+//! use jetscii::Substring;
+//!
+//! let colors = "red, blue, green";
+//! let colors: Vec<_> = colors.split(Substring::new(", ")).collect();
+//! assert_eq!(&colors, &["red", "blue", "green"]);
+//! # }
 //! ```
 //!
 //! ## What's so special about this library?
@@ -98,6 +128,15 @@
 //! | <code>s.as_bytes().iter().position(\|&c\| /* ... */)</code> | 485 MB/s      |
 //! | <code>s.find(&[/* ... */][..]))</code>                      | 282 MB/s      |
 //! | <code>s.find(\|c\| /* ... */)</code>                        | 785 MB/s      |
+//!
+//! ### Substring
+//!
+//! Searching a 5MiB string of `a`s with the string "xyzzy" at the end for "xyzzy":
+//!
+//! | Method                                           | Speed         |
+//! |--------------------------------------------------|---------------|
+//! | **<code>Substring::new("xyzzy").find(s)</code>** | **5680 MB/s** |
+//! | <code>s.find("xyzzy")</code>                     | 4440 MB/s     |
 
 #[cfg(test)]
 #[macro_use]
@@ -120,6 +159,36 @@ mod fallback;
 #[cfg(feature = "pattern")]
 mod pattern;
 
+macro_rules! dispatch {
+    (simd: $simd:expr,fallback: $fallback:expr,) => {
+        // If we can tell at compile time that we have support,
+        // call the optimized code directly.
+        #[cfg(target_feature = "sse4.2")]
+        {
+            $simd
+        }
+
+        // If we can tell at compile time that we will *never* have
+        // support, call the fallback directly.
+        #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+        {
+            $fallback
+        }
+
+        // Otherwise, we will be run on a machine with or without
+        // support, so we perform runtime detection.
+        #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"),
+                  not(target_feature = "sse4.2")))]
+        {
+            if is_x86_feature_detected!("sse4.2") {
+                $simd
+            } else {
+                $fallback
+            }
+        }
+    };
+}
+
 /// Searches a slice for a set of bytes. Up to 16 bytes may be used.
 pub struct Bytes<F>
 where
@@ -128,12 +197,12 @@ where
     // Include this implementation only when compiling for x86_64 as
     // that's the only platform that we support.
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    fast: simd::Fast,
+    simd: simd::Bytes,
 
     // If we are *guaranteed* to have SSE 4.2, then there's no reason
     // to have this implementation.
     #[cfg(not(target_feature = "sse4.2"))]
-    fallback: fallback::Fallback<F>,
+    fallback: fallback::Bytes<F>,
 
     // Since we might not use the fallback implementation, we add this
     // to avoid unused type parameters.
@@ -154,10 +223,10 @@ where
     pub /* const */ fn new(bytes: [u8; 16], len: i32, fallback: F) -> Self {
         Bytes {
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-            fast: simd::Fast::new(bytes, len),
+            simd: simd::Bytes::new(bytes, len),
 
             #[cfg(not(target_feature = "sse4.2"))]
-            fallback: fallback::Fallback::new(fallback),
+            fallback: fallback::Bytes::new(fallback),
 
             _fallback: PhantomData,
         }
@@ -166,30 +235,9 @@ where
     /// Searches the slice for the first matching byte in the set.
     #[inline]
     pub fn find(&self, haystack: &[u8]) -> Option<usize> {
-        // If we can tell at compile time that we have support,
-        // call the optimized code directly.
-        #[cfg(target_feature = "sse4.2")]
-        {
-            unsafe { self.fast.find(haystack) }
-        }
-
-        // If we can tell at compile time that we will *never* have
-        // support, call the fallback directly.
-        #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
-        {
-            self.fallback.find(haystack)
-        }
-
-        // Otherwise, we will be run on a machine with or without
-        // support, so we perform runtime detection.
-        #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"),
-                  not(target_feature = "sse4.2")))]
-        {
-            if is_x86_feature_detected!("sse4.2") {
-                unsafe { self.fast.find(haystack) }
-            } else {
-                self.fallback.find(haystack)
-            }
+        dispatch! {
+            simd: unsafe { self.simd.find(haystack) },
+            fallback: self.fallback.find(haystack),
         }
     }
 }
@@ -233,6 +281,72 @@ where
 
 /// A convenience type that can be used in a constant or static.
 pub type AsciiCharsConst = AsciiChars<fn(u8) -> bool>;
+
+/// Searches a slice for the first occurence of the subslice.
+pub struct ByteSubstring<'a> {
+    // Include this implementation only when compiling for x86_64 as
+    // that's the only platform that we support.
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    simd: simd::ByteSubstring<'a>,
+
+    // If we are *guaranteed* to have SSE 4.2, then there's no reason
+    // to have this implementation.
+    #[cfg(not(target_feature = "sse4.2"))]
+    fallback: fallback::ByteSubstring<'a>,
+}
+
+impl<'a> ByteSubstring<'a> {
+    pub /* const */ fn new(needle: &'a [u8]) -> Self {
+        ByteSubstring {
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            simd: simd::ByteSubstring::new(needle),
+
+            #[cfg(not(target_feature = "sse4.2"))]
+            fallback: fallback::ByteSubstring::new(needle),
+        }
+    }
+
+    fn needle_len(&self) -> usize {
+        dispatch! {
+            simd: self.simd.needle_len(),
+            fallback: self.fallback.needle_len(),
+        }
+    }
+
+    /// Searches the slice for the first occurence of the subslice.
+    #[inline]
+    pub fn find(&self, haystack: &[u8]) -> Option<usize> {
+        dispatch! {
+            simd: unsafe { self.simd.find(haystack) },
+            fallback: self.fallback.find(haystack),
+        }
+    }
+}
+
+/// A convenience type that can be used in a constant or static.
+pub type ByteSubstringConst = ByteSubstring<'static>;
+
+/// Searches a string for the first occurence of the substring.
+pub struct Substring<'a>(ByteSubstring<'a>);
+
+impl<'a> Substring<'a> {
+    pub /* const */ fn new(needle: &'a str) -> Self {
+        Substring(ByteSubstring::new(needle.as_bytes()))
+    }
+
+    fn needle_len(&self) -> usize {
+        self.0.needle_len()
+    }
+
+    /// Searches the string for the first occurence of the substring.
+    #[inline]
+    pub fn find(&self, haystack: &str) -> Option<usize> {
+        self.0.find(haystack.as_bytes())
+    }
+}
+
+/// A convenience type that can be used in a constant or static.
+pub type SubstringConst = Substring<'static>;
 
 #[cfg(all(test, feature = "benchmarks"))]
 mod bench {
@@ -361,5 +475,30 @@ mod bench {
                 .iter()
                 .position(|&c| c == b'<' || c == b'>' || c == b'&' || c == b'\'' || c == b'"')
         })
+    }
+
+    lazy_static! {
+        static ref XYZZY: Substring<'static> = Substring::new("xyzzy");
+    }
+
+    fn bench_substring<F>(b: &mut test::Bencher, f: F)
+    where
+        F: Fn(&str) -> Option<usize>,
+    {
+        let mut haystack = prefix_string();
+        haystack.push_str("xyzzy");
+
+        b.iter(|| test::black_box(f(&haystack)));
+        b.bytes = haystack.len() as u64;
+    }
+
+    #[bench]
+    fn substring_with_created_searcher(b: &mut test::Bencher) {
+        bench_substring(b, |hs| XYZZY.find(hs))
+    }
+
+    #[bench]
+    fn substring_stdlib_find(b: &mut test::Bencher) {
+        bench_substring(b, |hs| hs.find("xyzzy"))
     }
 }
