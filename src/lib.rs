@@ -306,6 +306,7 @@ impl<'a> ByteSubstring<'a> {
         }
     }
 
+    #[cfg(feature = "pattern")]
     fn needle_len(&self) -> usize {
         dispatch! {
             simd: self.simd.needle_len(),
@@ -334,6 +335,7 @@ impl<'a> Substring<'a> {
         Substring(ByteSubstring::new(needle.as_bytes()))
     }
 
+    #[cfg(feature = "pattern")]
     fn needle_len(&self) -> usize {
         self.0.needle_len()
     }
