@@ -266,6 +266,7 @@ impl<'a> ByteSubstring<'a> {
         }
     }
 
+    #[cfg(feature = "pattern")]
     pub fn needle_len(&self) -> usize {
         self.complete_needle.len()
     }

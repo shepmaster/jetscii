@@ -30,6 +30,7 @@ impl<'a> ByteSubstring<'a> {
         ByteSubstring { needle }
     }
 
+    #[cfg(feature = "pattern")]
     pub fn needle_len(&self) -> usize {
         self.needle.len()
     }
