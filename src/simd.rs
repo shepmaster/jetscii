@@ -306,9 +306,8 @@ impl<'a, 'b> PackedCompareControl for &'b ByteSubstring<'a> {
 #[cfg(test)]
 mod test {
     use libc;
-    use proptest::collection::vec as vec_strat;
     use proptest::prelude::*;
-    use std::{ptr, str};
+    use std::{fmt, ptr, str};
 
     use super::*;
 
@@ -336,36 +335,70 @@ mod test {
         }
     }
 
+    struct Haystack {
+        data: Vec<u8>,
+        start: usize,
+    }
+
+    impl Haystack {
+        fn without_start(&self) -> &[u8] {
+            &self.data
+        }
+    }
+
+    // Knowing the address of the data can be important
+    impl fmt::Debug for Haystack {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            f.debug_struct("Haystack")
+                .field("data", &self.data)
+                .field("(addr)", &self.data.as_ptr())
+                .field("start", &self.start)
+                .finish()
+        }
+    }
+
+    /// Creates a set of bytes and an offset inside them. Allows
+    /// checking arbitrary memory offsets, not just where the
+    /// allocator placed a value.
+    fn haystack() -> BoxedStrategy<Haystack> {
+        any::<Vec<u8>>()
+            .prop_flat_map(|data| {
+                let len = 0..=data.len();
+                (Just(data), len)
+            })
+            .prop_map(|(data, start)| Haystack { data, start })
+            .boxed()
+    }
+
+    #[derive(Debug)]
+    struct Needle {
+        data: [u8; 16],
+        len: usize,
+    }
+
+    impl Needle {
+        fn as_slice(&self) -> &[u8] {
+            &self.data[..self.len]
+        }
+    }
+
+    /// Creates an array and the number of valid values
+    fn needle() -> BoxedStrategy<Needle> {
+        (any::<[u8; 16]>(), 0..=16_usize)
+            .prop_map(|(data, len)| Needle { data, len })
+            .boxed()
+    }
+
     proptest! {
         #[test]
-        fn works_as_find_does_for_single_bytes(
-            (haystack, needle) in (any::<Vec<u8>>(), any::<u8>())
-        ) {
-            let us = unsafe { simd_bytes!(needle).find(&haystack) };
-            let them = haystack.find_any(&[needle]);
-            assert_eq!(us, them);
-        }
-
-        #[test]
-        fn works_as_find_does_for_multiple_bytes(
-            (haystack, (n1, n2, n3, n4)) in (any::<Vec<u8>>(), any::<(u8, u8, u8, u8)>())
-        ) {
-            let us = unsafe { simd_bytes!(n1, n2, n3, n4).find(&haystack) };
-            let them = haystack.find_any(&[n1, n2, n3, n4]);
-            assert_eq!(us, them);
-        }
-
-        #[test]
         fn works_as_find_does_for_up_to_and_including_16_bytes(
-            (haystack, needle_raw) in (any::<Vec<u8>>(), vec_strat(any::<u8>(), 0..=16))
+            (haystack, needle) in (haystack(), needle())
         ) {
-            let mut needle = [0; BYTES_PER_OPERATION];
+           let haystack = haystack.without_start();
 
-            needle[..needle_raw.len()].copy_from_slice(&needle_raw);
-
-            let us = unsafe { Bytes::new(needle, needle_raw.len() as i32).find(&haystack) };
-            let them = haystack.find_any(&needle[..needle_raw.len()]);
-            assert_eq!(us, them);
+           let us = unsafe { Bytes::new(needle.data, needle.len as i32).find(haystack) };
+           let them = haystack.find_any(needle.as_slice());
+           assert_eq!(us, them);
         }
     }
 
