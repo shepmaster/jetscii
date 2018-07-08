@@ -306,7 +306,8 @@ impl<'a, 'b> PackedCompareControl for &'b ByteSubstring<'a> {
 #[cfg(test)]
 mod test {
     use libc;
-    use quickcheck::quickcheck;
+    use proptest::collection::vec as vec_strat;
+    use proptest::prelude::*;
     use std::{ptr, str};
 
     use super::*;
@@ -335,37 +336,37 @@ mod test {
         }
     }
 
-    #[test]
-    fn works_as_find_does_for_single_bytes() {
-        fn prop(s: Vec<u8>, b: u8) -> bool {
-            unsafe { simd_bytes!(b).find(&s) == s.find_any(&[b]) }
+    proptest! {
+        #[test]
+        fn works_as_find_does_for_single_bytes(
+            (haystack, needle) in (any::<Vec<u8>>(), any::<u8>())
+        ) {
+            let us = unsafe { simd_bytes!(needle).find(&haystack) };
+            let them = haystack.find_any(&[needle]);
+            assert_eq!(us, them);
         }
-        quickcheck(prop as fn(Vec<u8>, u8) -> bool);
-    }
 
-    #[test]
-    fn works_as_find_does_for_multiple_bytes() {
-        fn prop(s: Vec<u8>, (b1, b2, b3, b4): (u8, u8, u8, u8)) -> bool {
-            unsafe { simd_bytes!(b1, b2, b3, b4).find(&s) == s.find_any(&[b1, b2, b3, b4]) }
+        #[test]
+        fn works_as_find_does_for_multiple_bytes(
+            (haystack, (n1, n2, n3, n4)) in (any::<Vec<u8>>(), any::<(u8, u8, u8, u8)>())
+        ) {
+            let us = unsafe { simd_bytes!(n1, n2, n3, n4).find(&haystack) };
+            let them = haystack.find_any(&[n1, n2, n3, n4]);
+            assert_eq!(us, them);
         }
-        quickcheck(prop as fn(Vec<u8>, (u8, u8, u8, u8)) -> bool);
-    }
 
-    #[test]
-    fn works_as_find_does_for_up_to_16_bytes() {
-        fn prop(s: Vec<u8>, b: Vec<u8>) -> bool {
-            let mut b = b;
-
+        #[test]
+        fn works_as_find_does_for_up_to_and_including_16_bytes(
+            (haystack, needle_raw) in (any::<Vec<u8>>(), vec_strat(any::<u8>(), 0..=16))
+        ) {
             let mut needle = [0; BYTES_PER_OPERATION];
-            b.resize(BYTES_PER_OPERATION, 0);
 
-            needle.copy_from_slice(&b);
+            needle[..needle_raw.len()].copy_from_slice(&needle_raw);
 
-            unsafe {
-                Bytes::new(needle, BYTES_PER_OPERATION as i32).find(&s) == s.find_any(&needle)
-            }
+            let us = unsafe { Bytes::new(needle, needle_raw.len() as i32).find(&haystack) };
+            let them = haystack.find_any(&needle[..needle_raw.len()]);
+            assert_eq!(us, them);
         }
-        quickcheck(prop as fn(Vec<u8>, Vec<u8>) -> bool);
     }
 
     #[test]
@@ -497,15 +498,18 @@ mod test {
         }
     }
 
-    #[test]
-    fn works_as_find_does_for_byte_substrings() {
-        fn prop(needle: Vec<u8>, haystack: Vec<u8>) -> bool {
-            unsafe {
+    proptest! {
+        #[test]
+        fn works_as_find_does_for_byte_substrings(
+            (needle, haystack) in (any::<Vec<u8>>(), any::<Vec<u8>>())
+        ) {
+            let us = unsafe {
                 let s = ByteSubstring::new(&needle);
-                s.find(&haystack) == haystack.find_seq(&needle)
-            }
+                s.find(&haystack)
+            };
+            let them = haystack.find_seq(&needle);
+            assert_eq!(us, them);
         }
-        quickcheck(prop as fn(Vec<u8>, Vec<u8>) -> bool);
     }
 
     #[test]
