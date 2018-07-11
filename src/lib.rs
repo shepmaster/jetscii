@@ -144,7 +144,8 @@ extern crate lazy_static;
 #[cfg(test)]
 extern crate libc;
 #[cfg(test)]
-extern crate quickcheck;
+#[macro_use]
+extern crate proptest;
 
 use std::marker::PhantomData;
 

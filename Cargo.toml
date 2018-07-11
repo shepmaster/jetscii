@@ -18,7 +18,6 @@ benchmarks = []
 pattern = []
 
 [dev-dependencies]
-quickcheck = "0.6"
+proptest = "0.8.3"
 libc = "0.2"
-rand = "0.4"
 lazy_static = "1.0.0"

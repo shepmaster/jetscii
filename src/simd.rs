@@ -130,7 +130,14 @@ where
             mask >>= leading_junk;
             // The first 1, starting from Bit-0 and going to Bit-7,
             // denotes the position of the first match.
-            Some(mask.trailing_zeros() as usize)
+            if mask == 0 {
+                // All of our matches were before the slice started
+                None
+            } else {
+                let first_match = mask.trailing_zeros() as usize;
+                debug_assert!(first_match < 16);
+                Some(first_match)
+            }
         } else {
             None
         }
@@ -306,8 +313,8 @@ impl<'a, 'b> PackedCompareControl for &'b ByteSubstring<'a> {
 #[cfg(test)]
 mod test {
     use libc;
-    use quickcheck::quickcheck;
-    use std::{ptr, str};
+    use proptest::prelude::*;
+    use std::{fmt, ptr, str};
 
     use super::*;
 
@@ -335,37 +342,86 @@ mod test {
         }
     }
 
-    #[test]
-    fn works_as_find_does_for_single_bytes() {
-        fn prop(s: Vec<u8>, b: u8) -> bool {
-            unsafe { simd_bytes!(b).find(&s) == s.find_any(&[b]) }
-        }
-        quickcheck(prop as fn(Vec<u8>, u8) -> bool);
+    struct Haystack {
+        data: Vec<u8>,
+        start: usize,
     }
 
-    #[test]
-    fn works_as_find_does_for_multiple_bytes() {
-        fn prop(s: Vec<u8>, (b1, b2, b3, b4): (u8, u8, u8, u8)) -> bool {
-            unsafe { simd_bytes!(b1, b2, b3, b4).find(&s) == s.find_any(&[b1, b2, b3, b4]) }
+    impl Haystack {
+        fn without_start(&self) -> &[u8] {
+            &self.data
         }
-        quickcheck(prop as fn(Vec<u8>, (u8, u8, u8, u8)) -> bool);
+
+        fn with_start(&self) -> &[u8] {
+            &self.data[self.start..]
+        }
     }
 
-    #[test]
-    fn works_as_find_does_for_up_to_16_bytes() {
-        fn prop(s: Vec<u8>, b: Vec<u8>) -> bool {
-            let mut b = b;
-
-            let mut needle = [0; BYTES_PER_OPERATION];
-            b.resize(BYTES_PER_OPERATION, 0);
-
-            needle.copy_from_slice(&b);
-
-            unsafe {
-                Bytes::new(needle, BYTES_PER_OPERATION as i32).find(&s) == s.find_any(&needle)
-            }
+    // Knowing the address of the data can be important
+    impl fmt::Debug for Haystack {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            f.debug_struct("Haystack")
+                .field("data", &self.data)
+                .field("(addr)", &self.data.as_ptr())
+                .field("start", &self.start)
+                .finish()
         }
-        quickcheck(prop as fn(Vec<u8>, Vec<u8>) -> bool);
+    }
+
+    /// Creates a set of bytes and an offset inside them. Allows
+    /// checking arbitrary memory offsets, not just where the
+    /// allocator placed a value.
+    fn haystack() -> BoxedStrategy<Haystack> {
+        any::<Vec<u8>>()
+            .prop_flat_map(|data| {
+                let len = 0..=data.len();
+                (Just(data), len)
+            })
+            .prop_map(|(data, start)| Haystack { data, start })
+            .boxed()
+    }
+
+    #[derive(Debug)]
+    struct Needle {
+        data: [u8; 16],
+        len: usize,
+    }
+
+    impl Needle {
+        fn as_slice(&self) -> &[u8] {
+            &self.data[..self.len]
+        }
+    }
+
+    /// Creates an array and the number of valid values
+    fn needle() -> BoxedStrategy<Needle> {
+        (any::<[u8; 16]>(), 0..=16_usize)
+            .prop_map(|(data, len)| Needle { data, len })
+            .boxed()
+    }
+
+    proptest! {
+        #[test]
+        fn works_as_find_does_for_up_to_and_including_16_bytes(
+            (haystack, needle) in (haystack(), needle())
+        ) {
+           let haystack = haystack.without_start();
+
+           let us = unsafe { Bytes::new(needle.data, needle.len as i32).find(haystack) };
+           let them = haystack.find_any(needle.as_slice());
+           assert_eq!(us, them);
+        }
+
+        #[test]
+        fn works_as_find_does_for_various_memory_offsets(
+            (needle, haystack) in (needle(), haystack())
+        ) {
+            let haystack = haystack.with_start();
+
+            let us = unsafe { Bytes::new(needle.data, needle.len as i32).find(haystack) };
+            let them = haystack.find_any(needle.as_slice());
+            assert_eq!(us, them);
+        }
     }
 
     #[test]
@@ -476,6 +532,44 @@ mod test {
     }
 
     #[test]
+    fn misalignment_does_not_cause_a_false_positive_before_start() {
+        const AAAA: u8 = 0x01;
+
+        let needle = Needle {
+            data: [
+                AAAA, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            ],
+            len: 1,
+        };
+        let haystack = Haystack {
+            data: vec![
+                AAAA, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00,
+            ],
+            start: 1,
+        };
+
+        let haystack = haystack.with_start();
+
+        // Needs to trigger the misalignment code
+        assert_ne!(0, (haystack.as_ptr() as usize) % 16);
+        // There are 64 bits in the mask and we check to make sure the
+        // result is less than the haystack
+        assert!(haystack.len() > 64);
+
+        let us = unsafe { Bytes::new(needle.data, needle.len as i32).find(haystack) };
+        assert_eq!(None, us);
+    }
+
+    #[test]
     fn xml_delim_3_is_found() {
         unsafe {
             assert_eq!(Some(0), XML_DELIM_3.find(b"<"));
@@ -497,15 +591,18 @@ mod test {
         }
     }
 
-    #[test]
-    fn works_as_find_does_for_byte_substrings() {
-        fn prop(needle: Vec<u8>, haystack: Vec<u8>) -> bool {
-            unsafe {
+    proptest! {
+        #[test]
+        fn works_as_find_does_for_byte_substrings(
+            (needle, haystack) in (any::<Vec<u8>>(), any::<Vec<u8>>())
+        ) {
+            let us = unsafe {
                 let s = ByteSubstring::new(&needle);
-                s.find(&haystack) == haystack.find_seq(&needle)
-            }
+                s.find(&haystack)
+            };
+            let them = haystack.find_seq(&needle);
+            assert_eq!(us, them);
         }
-        quickcheck(prop as fn(Vec<u8>, Vec<u8>) -> bool);
     }
 
     #[test]

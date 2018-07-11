@@ -143,61 +143,51 @@ unsafe impl<'n, 'h> Searcher<'h> for SubstringSearcher<'n, 'h> {
 
 #[cfg(test)]
 mod test {
-    use quickcheck::{quickcheck, Arbitrary, Gen};
-    use std::cmp;
+    use proptest::{self, collection::vec as vec_strat, prelude::*};
 
     use super::*;
 
-    #[derive(Debug, Copy, Clone)]
-    struct AsciiChar(u8);
-
-    impl Arbitrary for AsciiChar {
-        fn arbitrary<G>(g: &mut G) -> AsciiChar
-        where
-            G: Gen,
-        {
-            AsciiChar(g.gen_range::<u8>(0, 128))
-        }
+    fn ascii_char() -> BoxedStrategy<char> {
+        // This is inclusive
+        proptest::char::range(0 as char, 127 as char).boxed()
     }
 
-    #[test]
-    fn works_as_find_does_for_single_characters() {
-        fn prop(s: String, c: AsciiChar) -> bool {
-            let us = ascii_chars!(c.0);
-            let them = c.0 as char;
-            s.find(us) == s.find(them)
+    proptest! {
+        #[test]
+        fn works_as_find_does_for_single_characters(
+            (haystack, needle) in (any::<String>(), ascii_char())
+        ) {
+            let us = ascii_chars!(needle);
+            let them = needle;
+            assert_eq!(haystack.find(us), haystack.find(them));
         }
-        quickcheck(prop as fn(String, AsciiChar) -> bool);
-    }
 
-    #[test]
-    fn works_as_find_does_for_multiple_characters() {
-        fn prop(s: String, (c1, c2, c3, c4): (AsciiChar, AsciiChar, AsciiChar, AsciiChar)) -> bool {
-            let us = ascii_chars!(c1.0, c2.0, c3.0, c4.0);
-            let them = &[c1.0 as char, c2.0 as char, c3.0 as char, c4.0 as char][..];
-            s.find(us) == s.find(them)
+        #[test]
+        fn works_as_find_does_for_multiple_characters(
+            (haystack, (n1, n2, n3, n4)) in (any::<String>(), (ascii_char(), ascii_char(), ascii_char(), ascii_char()))
+        ) {
+            let us = ascii_chars!(n1, n2, n3, n4);
+            let them = &[n1, n2, n3, n4][..];
+            assert_eq!(haystack.find(us), haystack.find(them));
         }
-        quickcheck(prop as fn(String, (AsciiChar, AsciiChar, AsciiChar, AsciiChar)) -> bool);
-    }
 
-    #[test]
-    fn works_as_find_does_for_up_to_16_characters() {
-        fn prop(s: String, v: Vec<AsciiChar>) -> bool {
-            let n = cmp::min(16, v.len());
-
+        #[test]
+        fn works_as_find_does_for_up_to_and_including_16_characters(
+            (haystack, needle_raw) in (any::<String>(), vec_strat(ascii_char(), 0..=16))
+        ) {
             let mut bytes = [b'\0'; 16];
-            for (c, c2) in v.iter().take(n).zip(&mut bytes) {
-                *c2 = c.0;
+            for (&c, b) in needle_raw.iter().zip(&mut bytes) {
+                *b = c as u8;
             }
-            let chars: Vec<_> = v.iter().map(|c| c.0 as char).collect();
 
-            let us = AsciiChars::new(bytes, n as i32, |b| bytes[..n].iter().any(|&c| c == b));
+            let us = AsciiChars::new(bytes, needle_raw.len() as i32, |b| {
+                needle_raw.iter().any(|&c| c as u8 == b)
+            });
 
-            let them = &chars[..n];
+            let them = &needle_raw[..];
 
-            s.find(us) == s.find(them)
+            assert_eq!(haystack.find(us), haystack.find(them));
         }
-        quickcheck(prop as fn(String, Vec<AsciiChar>) -> bool);
     }
 
     #[test]
@@ -223,20 +213,23 @@ mod test {
         assert_eq!(SearchStep::Done, searcher.next());
     }
 
-    #[test]
-    fn works_as_find_does_for_substrings() {
-        fn prop(needle: String, haystack: String) -> bool {
+    proptest! {
+        #[test]
+        fn works_as_find_does_for_substrings(
+            (needle, haystack) in (any::<String>(), any::<String>())
+        ) {
+            prop_assume!(!needle.is_empty());
+
             let us = Substring::new(&needle);
             let them: &str = &needle;
 
-            needle.is_empty() || haystack.find(us) == haystack.find(them)
+            assert_eq!(haystack.find(us), haystack.find(them));
         }
-        quickcheck(prop as fn(String, String) -> bool);
     }
 
     /// I'm not sure if it's worth it to try to match the standard
     /// library behavior here. If so, we can use this test and remove
-    /// the `is_empty()` test in the quickcheck test above.
+    /// the `is_empty()` test in the proptest test above.
     #[test]
     #[ignore]
     fn substring_of_an_empty_needle() {
