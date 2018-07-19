@@ -1,6 +1,7 @@
 #![cfg_attr(feature = "pattern", feature(pattern))]
 #![cfg_attr(feature = "benchmarks", feature(test))]
 
+
 //! A tiny library to efficiently search strings for sets of ASCII
 //! characters or byte slices for sets of bytes.
 //!
@@ -147,6 +148,9 @@ extern crate libc;
 #[macro_use]
 extern crate proptest;
 
+#[cfg(feature = "pattern-3")]
+extern crate pattern_3;
+
 use std::marker::PhantomData;
 
 include!(concat!(env!("OUT_DIR"), "/src/macros.rs"));
@@ -159,6 +163,9 @@ mod fallback;
 
 #[cfg(feature = "pattern")]
 mod pattern;
+
+#[cfg(feature = "pattern-3")]
+mod pattern_3_impl;
 
 macro_rules! dispatch {
     (simd: $simd:expr,fallback: $fallback:expr,) => {

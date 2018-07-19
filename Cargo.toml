@@ -17,6 +17,9 @@ license = "MIT"
 benchmarks = []
 pattern = []
 
+[dependencies]
+pattern-3 = { optional = true, path = "pattern-3" }
+
 [dev-dependencies]
 proptest = "0.8.3"
 libc = "0.2"
