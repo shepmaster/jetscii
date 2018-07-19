@@ -311,7 +311,7 @@ impl<'a, 'b> PackedCompareControl for &'b ByteSubstring<'a> {
 // TODO: Does x86 actually support this instruction?
 
 #[cfg(test)]
-mod test {
+pub mod test {
     use libc;
     use proptest::prelude::*;
     use std::{fmt, ptr, str};
@@ -342,17 +342,17 @@ mod test {
         }
     }
 
-    struct Haystack {
+    pub struct Haystack {
         data: Vec<u8>,
         start: usize,
     }
 
     impl Haystack {
-        fn without_start(&self) -> &[u8] {
+        pub fn without_start(&self) -> &[u8] {
             &self.data
         }
 
-        fn with_start(&self) -> &[u8] {
+        pub fn with_start(&self) -> &[u8] {
             &self.data[self.start..]
         }
     }
@@ -371,7 +371,7 @@ mod test {
     /// Creates a set of bytes and an offset inside them. Allows
     /// checking arbitrary memory offsets, not just where the
     /// allocator placed a value.
-    fn haystack() -> BoxedStrategy<Haystack> {
+    pub fn haystack() -> BoxedStrategy<Haystack> {
         any::<Vec<u8>>()
             .prop_flat_map(|data| {
                 let len = 0..=data.len();
@@ -382,19 +382,19 @@ mod test {
     }
 
     #[derive(Debug)]
-    struct Needle {
-        data: [u8; 16],
-        len: usize,
+    pub struct Needle {
+        pub data: [u8; 16],
+        pub len: usize,
     }
 
     impl Needle {
-        fn as_slice(&self) -> &[u8] {
+        pub fn as_slice(&self) -> &[u8] {
             &self.data[..self.len]
         }
     }
 
     /// Creates an array and the number of valid values
-    fn needle() -> BoxedStrategy<Needle> {
+    pub fn needle() -> BoxedStrategy<Needle> {
         (any::<[u8; 16]>(), 0..=16_usize)
             .prop_map(|(data, len)| Needle { data, len })
             .boxed()
