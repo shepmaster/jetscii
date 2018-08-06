@@ -4,7 +4,7 @@
 
 use std::{
     arch::x86_64::{
-        __m128i, _mm_cmpestrc, _mm_cmpestri, _mm_cmpestrm, _mm_loadu_si128, _SIDD_CMP_EQUAL_ORDERED,
+        __m128i, _mm_cmpestri, _mm_cmpestrm, _mm_extract_epi32, _mm_loadu_si128, _SIDD_CMP_EQUAL_ORDERED,
     },
     cmp::min,
     slice,
@@ -17,7 +17,6 @@ const BYTES_PER_OPERATION: usize = 16;
 union TransmuteToSimd {
     simd: __m128i,
     bytes: [u8; 16],
-    u64s: [u64; 2],
 }
 
 trait PackedCompareControl {
@@ -102,14 +101,6 @@ where
         // TODO: document why this is ok
         let haystack = _mm_loadu_si128(haystack.as_ptr() as *const __m128i);
 
-        // TODO: Check that these are coalesced
-        let found = _mm_cmpestrc(
-            self.0.needle(),
-            self.0.needle_len(),
-            haystack,
-            BYTES_PER_OPERATION as i32,
-            T::CONTROL_BYTE,
-        );
         let mask = _mm_cmpestrm(
             self.0.needle(),
             self.0.needle_len(),
@@ -117,10 +108,10 @@ where
             BYTES_PER_OPERATION as i32,
             T::CONTROL_BYTE,
         );
+        let mask = _mm_extract_epi32(mask, 0) as u16;
 
-        if found != 0 {
-            let mut mask = TransmuteToSimd { simd: mask }.u64s[0];
-
+        if mask.trailing_zeros() < 16 {
+            let mut mask = mask;
             // Byte: 7 6 5 4 3 2 1 0
             // Str : &[0, 1, 2, 3, ...]
             //
@@ -149,14 +140,6 @@ where
         // TODO: document why this is ok
         let haystack = _mm_loadu_si128(haystack as *const __m128i);
 
-        // TODO: Check that these are coalesced
-        let found = _mm_cmpestrc(
-            self.0.needle(),
-            self.0.needle_len(),
-            haystack,
-            haystack_len,
-            T::CONTROL_BYTE,
-        );
         let location = _mm_cmpestri(
             self.0.needle(),
             self.0.needle_len(),
@@ -165,7 +148,7 @@ where
             T::CONTROL_BYTE,
         );
 
-        if found != 0 {
+        if location < 16 {
             Some(location as usize)
         } else {
             None
