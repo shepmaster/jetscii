@@ -4,7 +4,7 @@
 
 use std::{
     arch::x86_64::{
-        __m128i, _mm_cmpestri, _mm_cmpestrm, _mm_extract_epi32, _mm_loadu_si128, _SIDD_CMP_EQUAL_ORDERED,
+        __m128i, _mm_cmpestri, _mm_cmpestrm, _mm_extract_epi16, _mm_loadu_si128, _SIDD_CMP_EQUAL_ORDERED,
     },
     cmp::min,
     slice,
@@ -108,7 +108,7 @@ where
             BYTES_PER_OPERATION as i32,
             T::CONTROL_BYTE,
         );
-        let mask = _mm_extract_epi32(mask, 0) as u16;
+        let mask = _mm_extract_epi16(mask, 0) as u16;
 
         if mask.trailing_zeros() < 16 {
             let mut mask = mask;
