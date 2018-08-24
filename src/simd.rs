@@ -4,7 +4,7 @@
 
 use std::{
     arch::x86_64::{
-        __m128i, _mm_cmpestri, _mm_cmpestrm, _mm_extract_epi32, _mm_loadu_si128, _SIDD_CMP_EQUAL_ORDERED,
+        __m128i, _mm_cmpestri, _mm_cmpestrm, _mm_extract_epi32, _mm_loadu_si128, _SIDD_CMP_EQUAL_ORDERED, _SIDD_CMP_RANGES,
     },
     cmp::min,
     slice,
@@ -236,6 +236,43 @@ impl<'b> PackedCompareControl for &'b Bytes {
     }
 }
 
+pub struct ByteRanges {
+    needle: __m128i,
+    ranges_len: i32,
+}
+
+impl ByteRanges {
+    pub /* const */ fn new(ranges: [(u8, u8); 8], ranges_len: i32) -> Self {
+        ByteRanges {
+            needle: unsafe { TransmuteToSimd { bytes: [ranges[0].0, ranges[0].1,
+                                                       ranges[1].0, ranges[1].1,
+                                                       ranges[2].0, ranges[2].1,
+                                                       ranges[3].0, ranges[3].1,
+                                                       ranges[4].0, ranges[4].1,
+                                                       ranges[5].0, ranges[5].1,
+                                                       ranges[6].0, ranges[6].1,
+                                                       ranges[7].0, ranges[7].1,] }.simd },
+            ranges_len,
+        }
+    }
+
+    #[inline]
+    #[target_feature(enable = "sse4.2")]
+    pub unsafe fn find(&self, haystack: &[u8]) -> Option<usize> {
+        find(PackedCompare(self), haystack)
+    }
+}
+
+impl<'b> PackedCompareControl for &'b ByteRanges {
+    const CONTROL_BYTE: i32 = _SIDD_CMP_RANGES;
+    fn needle(&self) -> __m128i {
+        self.needle
+    }
+    fn needle_len(&self) -> i32 {
+        self.ranges_len * 2
+    }
+}
+
 pub struct ByteSubstring<'a> {
     complete_needle: &'a [u8],
     needle: __m128i,
@@ -325,6 +362,19 @@ mod test {
         }
     }
 
+    trait SliceFindInRangePolyfill<T> {
+        fn find_any_in_ranges(&self, ranges: &[(T, T)]) -> Option<usize>;
+    }
+
+    impl<T> SliceFindInRangePolyfill<T> for [T]
+    where
+        T: PartialOrd,
+    {
+        fn find_any_in_ranges(&self, ranges: &[(T, T)]) -> Option<usize> {
+            self.iter().position(|c| ranges.iter().position(|r| r.0 <= *c && *c <= r.1).is_some())
+        }
+    }
+
     struct Haystack {
         data: Vec<u8>,
         start: usize,
@@ -383,6 +433,42 @@ mod test {
             .boxed()
     }
 
+    #[derive(Debug)]
+    struct Ranges {
+        ranges: [(u8, u8); 8],
+        len: usize,
+    }
+
+    impl Ranges {
+        fn as_slice(&self) -> &[(u8, u8)] {
+            &self.ranges[..self.len]
+        }
+    }
+
+    /// Creates an array of valid ranges (where the first number is less-than-or-equal-to
+    /// the second number) and the number of such ranges.
+    fn valid_ranges() -> BoxedStrategy<Ranges> {
+        (any::<[(u8, u8); 8]>(), 0..=8_usize)
+            .prop_map(|(pairs, len)| {
+                let mut ranges: [(u8, u8); 8] = pairs;
+                for (ref lo, hi) in ranges.iter_mut() {
+                    let extra = *hi;
+                    *hi = if extra > 255_u8 - lo { 255_u8 } else { lo + extra };
+                    assert!(lo <= hi);
+                }
+                Ranges { ranges, len }
+            })
+            .boxed()
+    }
+
+    /// Creates an array of arbitrary ranges (the first number can be greater than
+    /// the second number) and the number of such ranges.
+    fn arbitrary_ranges() -> BoxedStrategy<Ranges> {
+        (any::<[(u8, u8); 8]>(), 0..=8_usize)
+            .prop_map(|(ranges, len)| Ranges { ranges, len })
+            .boxed()
+    }
+
     proptest! {
         #[test]
         fn works_as_find_does_for_up_to_and_including_16_bytes(
@@ -404,6 +490,50 @@ mod test {
             let us = unsafe { Bytes::new(needle.data, needle.len as i32).find(haystack) };
             let them = haystack.find_any(needle.as_slice());
             assert_eq!(us, them);
+        }
+
+        #[test]
+        fn works_for_valid_ranges(
+            (haystack, ranges) in (haystack(), valid_ranges())
+        ) {
+           let haystack = haystack.without_start();
+
+           let us = unsafe { ByteRanges::new(ranges.ranges, ranges.len as i32).find(haystack) };
+           let them = haystack.find_any_in_ranges(ranges.as_slice());
+           assert_eq!(us, them);
+        }
+
+        #[test]
+        fn works_for_valid_ranges_at_various_memory_offsets(
+            (haystack, ranges) in (haystack(), valid_ranges())
+        ) {
+           let haystack = haystack.with_start();
+
+           let us = unsafe { ByteRanges::new(ranges.ranges, ranges.len as i32).find(haystack) };
+           let them = haystack.find_any_in_ranges(ranges.as_slice());
+           assert_eq!(us, them);
+        }
+
+        #[test]
+        fn works_for_arbitrary_ranges(
+            (haystack, ranges) in (haystack(), arbitrary_ranges())
+        ) {
+           let haystack = haystack.without_start();
+
+           let us = unsafe { ByteRanges::new(ranges.ranges, ranges.len as i32).find(haystack) };
+           let them = haystack.find_any_in_ranges(ranges.as_slice());
+           assert_eq!(us, them);
+        }
+
+        #[test]
+        fn works_for_arbitrary_ranges_at_various_memory_offsets(
+            (haystack, ranges) in (haystack(), arbitrary_ranges())
+        ) {
+           let haystack = haystack.with_start();
+
+           let us = unsafe { ByteRanges::new(ranges.ranges, ranges.len as i32).find(haystack) };
+           let them = haystack.find_any_in_ranges(ranges.as_slice());
+           assert_eq!(us, them);
         }
     }
 

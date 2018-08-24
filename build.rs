@@ -22,6 +22,7 @@ fn macros() {
         .unwrap_or_else(|e| panic!("Could not create {}: {}", base.display(), e));
 
     macros_bytes(&mut f, &base);
+    macros_byte_ranges(&mut f, &base);
     macros_ascii_chars(&mut f, &base);
 }
 
@@ -54,6 +55,41 @@ fn macros_bytes(f: &mut File, base: &Path) {
 /// implements a fallback. Provide 1 to 16 characters.
 #[macro_export]
 macro_rules! bytes {{
+{}}}
+"#,
+        arms
+    ).unwrap_or_else(|e| panic!("Could not write {}: {}", base.display(), e));
+}
+
+fn macros_byte_ranges(f: &mut File, base: &Path) {
+    let arms: String = (1..=8)
+        .map(|max| {
+            let args: Vec<_> = (0..max).map(|i| format!("$r{0}:expr", i)).collect();
+            let args = args.join(", ");
+
+            let arg_values: Vec<_> = (0..max).map(|i| format!("($r{0}.0 as u8, $r{0}.1 as u8)", i)).collect();
+
+            let mut array = arg_values.clone();
+            array.extend((max..8).map(|_| String::from("(0_u8, 0_u8)")));
+            let array = array.join(", ");
+
+            let closure_body: Vec<_> = (0..max).map(|n| format!("($r{0}.0 as u8 <= c && c <= $r{0}.1 as u8)", n)).collect();
+            let closure = format!("|c| {}", closure_body.join(" || "));
+
+            format!(
+                "({}) => ($crate::ByteRanges::new([{}], {}, {}));\n",
+                args, array, max, closure
+            )
+        })
+        .collect();
+
+    write!(
+        f,
+        r#"
+/// A convenience constructor for a [`ByteRanges`] that automatically
+/// implements a fallback. Provide 1 to 8 byte ranges.
+#[macro_export]
+macro_rules! byte_ranges {{
 {}}}
 "#,
         arms

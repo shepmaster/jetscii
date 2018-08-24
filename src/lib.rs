@@ -27,8 +27,23 @@
 //!
 //! fn main() {
 //!     let raw_data = [0x00, 0x01, 0x10, 0xFF, 0x42];
+//!     // Search for the first byte that's either 0x01 or 0x10
 //!     let first = bytes!(0x01, 0x10).find(&raw_data);
 //!     assert_eq!(first, Some(1));
+//! }
+//! ```
+//!
+//! ### Searching for a byte in a set of byte ranges
+//!
+//! ```rust
+//! #[macro_use]
+//! extern crate jetscii;
+//!
+//! fn main() {
+//!     let raw_data = [0x00, 0x01, 0x10, 0xFF, 0x42];
+//!     // Search for the first byte that's either 0x70...0x7F, 0xFD, 0xFE, or 0xFF
+//!     let first = byte_ranges!((0x70, 0x7F), (0xFD, 0xFF)).find(&raw_data);
+//!     assert_eq!(first, Some(3));
 //! }
 //! ```
 //!
@@ -245,6 +260,64 @@ where
 
 /// A convenience type that can be used in a constant or static.
 pub type BytesConst = Bytes<fn(u8) -> bool>;
+
+/// Searches a slice for a byte in a set of byte ranges. Up to 8 byte ranges
+/// may be used.
+pub struct ByteRanges<F>
+where
+    F: Fn(u8) -> bool,
+{
+    // Include this implementation only when compiling for x86_64 as
+    // that's the only platform that we support.
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    simd: simd::ByteRanges,
+
+    // If we are *guaranteed* to have SSE 4.2, then there's no reason
+    // to have this implementation.
+    // Note that the Bytes fallback is also used as the ByteRanges fallback.
+    #[cfg(not(target_feature = "sse4.2"))]
+    fallback: fallback::Bytes<F>,
+
+    // Since we might not use the fallback implementation, we add this
+    // to avoid unused type parameters.
+    _fallback: PhantomData<F>,
+}
+
+impl<F> ByteRanges<F>
+where
+    F: Fn(u8) -> bool,
+{
+    /// Manual constructor; prefer using [`byte_ranges!`] instead.
+    ///
+    /// Provide an array of byte ranges to search for, the number of
+    /// valid ranges provided, and a closure to use when the SIMD
+    /// intrinsics are not available. The closure **must** search for
+    /// bytes in the same byte ranges.
+    #[allow(unused_variables)]
+    pub /* const */ fn new(ranges: [(u8, u8); 8], len: i32, fallback: F) -> Self {
+        ByteRanges {
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            simd: simd::ByteRanges::new(ranges, len),
+
+            #[cfg(not(target_feature = "sse4.2"))]
+            fallback: fallback::Bytes::new(fallback),
+
+            _fallback: PhantomData,
+        }
+    }
+
+    /// Searches the slice for the first byte that is in one of the byte ranges.
+    #[inline]
+    pub fn find(&self, haystack: &[u8]) -> Option<usize> {
+        dispatch! {
+            simd: unsafe { self.simd.find(haystack) },
+            fallback: self.fallback.find(haystack),
+        }
+    }
+}
+
+/// A convenience type that can be used in a constant or static.
+pub type ByteRangesConst = ByteRanges<fn(u8) -> bool>;
 
 /// Searches a string for a set of ASCII characters. Up to 16
 /// characters may be used.
