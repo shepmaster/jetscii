@@ -94,49 +94,52 @@
 //!
 //! ## Benchmarks
 //!
+//! These numbers come from running on my personal laptop; always
+//! benchmark with data and machines similar to your own.
+//!
 //! ### Single character
 //!
 //! Searching a 5MiB string of `a`s with a single space at the end for a space:
 //!
 //! | Method                                                      | Speed          |
 //! |-------------------------------------------------------------|----------------|
-//! | <code>ascii_chars!(' ').find(s)</code>                      | 5882 MB/s      |
-//! | <code>s.as_bytes().iter().position(\|&c\| c == b' ')</code> | 1514 MB/s      |
-//! | <code>s.find(" ")</code>                                    | 644 MB/s       |
-//! | <code>s.find(&[' '][..])</code>                             | 630 MB/s       |
-//! | **<code>s.find(' ')</code>**                                | **10330 MB/s** |
-//! | <code>s.find(\|c\| c == ' ')</code>                         | 786 MB/s       |
+//! | <code>ascii_chars!(' ').find(s)</code>                      | 11504 MB/s     |
+//! | <code>s.as_bytes().iter().position(\|&c\| c == b' ')</code> | 2377 MB/s      |
+//! | <code>s.find(" ")</code>                                    | 2149 MB/s      |
+//! | <code>s.find(&[' '][..])</code>                             | 1151 MB/s      |
+//! | **<code>s.find(' ')</code>**                                | **14600 MB/s** |
+//! | <code>s.find(\|c\| c == ' ')</code>                         | 1080 MB/s      |
 //!
 //! ### Set of 3 characters
 //!
 //! Searching a 5MiB string of `a`s with a single ampersand at the end for `<`, `>`, and `&`:
 //!
-//! | Method                                                      | Speed         |
-//! |-------------------------------------------------------------|---------------|
-//! | **<code>ascii_chars!(/\* ... \*/).find(s)</code>**          | **6238 MB/s** |
-//! | <code>s.as_bytes().iter().position(\|&c\| /* ... */)</code> | 1158 MB/s     |
-//! | <code>s.find(&[/* ... */][..])</code>                       | 348 MB/s      |
-//! | <code>s.find(\|c\| /* ... */))</code>                       | 620 MB/s      |
+//! | Method                                                      | Speed          |
+//! |-------------------------------------------------------------|----------------|
+//! | **<code>ascii_chars!(/\* ... \*/).find(s)</code>**          | **11513 MB/s** |
+//! | <code>s.as_bytes().iter().position(\|&c\| /* ... */)</code> | 1644 MB/s      |
+//! | <code>s.find(&[/* ... */][..])</code>                       | 1079 MB/s      |
+//! | <code>s.find(\|c\| /* ... */))</code>                       | 1084 MB/s      |
 //!
 //! ### Set of 5 characters
 //!
 //! Searching a 5MiB string of `a`s with a single ampersand at the end for `<`, `>`, `&`, `'`, and `"`:
 //!
-//! | Method                                                      | Speed         |
-//! |-------------------------------------------------------------|---------------|
-//! | **<code>ascii_chars!(/\* ... \*/).find(s)</code>**          | **6303 MB/s** |
-//! | <code>s.as_bytes().iter().position(\|&c\| /* ... */)</code> | 485 MB/s      |
-//! | <code>s.find(&[/* ... */][..]))</code>                      | 282 MB/s      |
-//! | <code>s.find(\|c\| /* ... */)</code>                        | 785 MB/s      |
+//! | Method                                                      | Speed          |
+//! |-------------------------------------------------------------|----------------|
+//! | **<code>ascii_chars!(/\* ... \*/).find(s)</code>**          | **11504 MB/s** |
+//! | <code>s.as_bytes().iter().position(\|&c\| /* ... */)</code> | 812 MB/s       |
+//! | <code>s.find(&[/* ... */][..]))</code>                      | 538 MB/s       |
+//! | <code>s.find(\|c\| /* ... */)</code>                        | 1082 MB/s      |
 //!
 //! ### Substring
 //!
 //! Searching a 5MiB string of `a`s with the string "xyzzy" at the end for "xyzzy":
 //!
-//! | Method                                           | Speed         |
-//! |--------------------------------------------------|---------------|
-//! | **<code>Substring::new("xyzzy").find(s)</code>** | **5680 MB/s** |
-//! | <code>s.find("xyzzy")</code>                     | 4440 MB/s     |
+//! | Method                                           | Speed          |
+//! |--------------------------------------------------|----------------|
+//! | **<code>Substring::new("xyzzy").find(s)</code>** | **11475 MB/s** |
+//! | <code>s.find("xyzzy")</code>                     | 5391 MB/s      |
 
 #[cfg(test)]
 #[macro_use]
