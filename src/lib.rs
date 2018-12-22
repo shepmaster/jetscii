@@ -145,10 +145,12 @@
 #[macro_use]
 extern crate lazy_static;
 #[cfg(test)]
-extern crate libc;
+extern crate memmap;
 #[cfg(test)]
 #[macro_use]
 extern crate proptest;
+#[cfg(test)]
+extern crate region;
 
 use std::marker::PhantomData;
 
