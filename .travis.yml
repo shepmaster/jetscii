@@ -6,9 +6,13 @@ rust:
   - nightly
 matrix:
   include:
-    rust: nightly
-    env:
-      - FEATURES="pattern"
+    - rust: nightly
+      env:
+        - FEATURES="pattern"
+    - rust: stable
+      os: windows
+    - rust: stable
+      os: osx
 script: |
   cargo build --verbose --features "${FEATURES}"
   cargo test --verbose --features "${FEATURES}"
