@@ -295,9 +295,10 @@ impl<'a, 'b> PackedCompareControl for &'b ByteSubstring<'a> {
 
 #[cfg(test)]
 mod test {
-    use libc;
     use proptest::prelude::*;
-    use std::{fmt, ptr, str};
+    use std::{fmt, str};
+    use memmap::MmapMut;
+    use region::Protection;
 
     use super::*;
 
@@ -661,52 +662,28 @@ mod test {
         }
     }
 
-    #[cfg(target_os = "macos")]
-    const MAP_ANONYMOUS: libc::int32_t = libc::MAP_ANON;
-
-    #[cfg(not(target_os = "macos"))]
-    const MAP_ANONYMOUS: libc::int32_t = libc::MAP_ANONYMOUS;
-
-    fn alloc_guarded_string(value: &str, protect: bool) -> &'static str {
+    fn with_guarded_string(value: &str, f: impl FnOnce(&str)) {
         // Allocate a string that ends directly before a
         // read-protected page.
-        //
-        // This function leaks two pages of memory per call, which is
-        // acceptable for use in tests only.
 
-        const PAGE_SIZE: usize = 4096;
-        assert!(value.len() <= PAGE_SIZE);
+        let page_size = region::page::size();
+        assert!(value.len() <= page_size);
 
+        // Map two rw-accessible pages of anonymous memory
+        let mut mmap = MmapMut::map_anon(2 * page_size).unwrap();
+
+        let (first_page, second_page) = mmap.split_at_mut(page_size);
+
+        // Prohibit any access to the second page, so that any attempt
+        // to read or write it would trigger a segfault
         unsafe {
-            // Map two rw-accessible pages of anonymous memory
-            let addr = 0 as *mut libc::c_void;
-            let length = 2 * PAGE_SIZE as libc::size_t;
-            let prot = libc::PROT_READ | libc::PROT_WRITE;
-            let flags = libc::MAP_PRIVATE | MAP_ANONYMOUS;
-            let fd = -1;
-            let offset = 0;
-
-            let first_page = libc::mmap(addr, length, prot, flags, fd, offset);
-            assert!(!first_page.is_null());
-
-            let second_page = first_page.offset(PAGE_SIZE as isize);
-
-            if protect {
-                // Prohibit any access to the second page, so that any attempt
-                // to read or write it would trigger a segfault
-                let addr = second_page;
-                let length = PAGE_SIZE as libc::size_t;
-                let prot = libc::PROT_NONE;
-
-                let mprotect_retval = libc::mprotect(addr, length, prot);
-                assert_eq!(0, mprotect_retval);
-            }
-
-            // Copy bytes to the end of the first page
-            let start = second_page.offset(-(value.len() as isize)) as *mut u8;
-            ptr::copy_nonoverlapping(value.as_ptr(), start, value.len());
-            str::from_utf8_unchecked(slice::from_raw_parts(start, value.len()))
+            region::protect(second_page.as_ptr(), page_size, Protection::None).unwrap();
         }
+
+        // Copy bytes to the end of the first page
+        let dest = &mut first_page[page_size - value.len()..];
+        dest.copy_from_slice(value.as_bytes());
+        f(unsafe { str::from_utf8_unchecked(dest) });
     }
 
     #[test]
@@ -721,17 +698,17 @@ mod test {
 
         // Allocate a 16-byte string at page boundary.  To verify this
         // test, set protect=false to prevent segfaults.
-        let text = alloc_guarded_string("0123456789abcdef", true);
+        with_guarded_string("0123456789abcdef", |text| {
+            // Will search for the last char
+            let needle = simd_bytes!(b'f');
 
-        // Will search for the last char
-        let needle = simd_bytes!(b'f');
-
-        // Check all suffixes of our 16-byte string
-        for offset in 0..text.len() {
-            let tail = &text[offset..];
-            unsafe {
-                assert_eq!(Some(tail.len() - 1), needle.find(tail.as_bytes()));
+            // Check all suffixes of our 16-byte string
+            for offset in 0..text.len() {
+                let tail = &text[offset..];
+                unsafe {
+                    assert_eq!(Some(tail.len() - 1), needle.find(tail.as_bytes()));
+                }
             }
-        }
+        });
     }
 }
