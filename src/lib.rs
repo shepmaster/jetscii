@@ -156,7 +156,7 @@ use std::marker::PhantomData;
 
 include!(concat!(env!("OUT_DIR"), "/src/macros.rs"));
 
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 mod simd;
 
 #[cfg(not(target_feature = "sse4.2"))]
@@ -176,15 +176,14 @@ macro_rules! dispatch {
 
         // If we can tell at compile time that we will *never* have
         // support, call the fallback directly.
-        #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+        #[cfg(not(target_arch = "x86_64"))]
         {
             $fallback
         }
 
         // Otherwise, we will be run on a machine with or without
         // support, so we perform runtime detection.
-        #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"),
-                  not(target_feature = "sse4.2")))]
+        #[cfg(all(target_arch = "x86_64", not(target_feature = "sse4.2")))]
         {
             if is_x86_feature_detected!("sse4.2") {
                 $simd
@@ -202,7 +201,7 @@ where
 {
     // Include this implementation only when compiling for x86_64 as
     // that's the only platform that we support.
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     simd: simd::Bytes,
 
     // If we are *guaranteed* to have SSE 4.2, then there's no reason
@@ -228,7 +227,7 @@ where
     #[allow(unused_variables)]
     pub /* const */ fn new(bytes: [u8; 16], len: i32, fallback: F) -> Self {
         Bytes {
-            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            #[cfg(target_arch = "x86_64")]
             simd: simd::Bytes::new(bytes, len),
 
             #[cfg(not(target_feature = "sse4.2"))]
@@ -292,7 +291,7 @@ pub type AsciiCharsConst = AsciiChars<fn(u8) -> bool>;
 pub struct ByteSubstring<'a> {
     // Include this implementation only when compiling for x86_64 as
     // that's the only platform that we support.
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     simd: simd::ByteSubstring<'a>,
 
     // If we are *guaranteed* to have SSE 4.2, then there's no reason
@@ -304,7 +303,7 @@ pub struct ByteSubstring<'a> {
 impl<'a> ByteSubstring<'a> {
     pub /* const */ fn new(needle: &'a [u8]) -> Self {
         ByteSubstring {
-            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            #[cfg(target_arch = "x86_64")]
             simd: simd::ByteSubstring::new(needle),
 
             #[cfg(not(target_feature = "sse4.2"))]
