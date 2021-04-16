@@ -20,8 +20,6 @@ union TransmuteToSimd {
 }
 
 trait PackedCompareControl {
-    const CONTROL_BYTE: i32;
-
     fn needle(&self) -> __m128i;
     fn needle_len(&self) -> i32;
 }
@@ -37,7 +35,7 @@ trait PackedCompareControl {
 /// beginning of the byte slice.
 #[inline]
 #[target_feature(enable = "sse4.2")]
-unsafe fn find<C>(packed: PackedCompare<C>, mut haystack: &[u8]) -> Option<usize>
+unsafe fn find<C, const CONTROL_BYTE: i32>(packed: PackedCompare<C, CONTROL_BYTE>, mut haystack: &[u8]) -> Option<usize>
 where
     C: PackedCompareControl,
 {
@@ -90,8 +88,8 @@ where
         .map(|loc| offset + loc)
 }
 
-struct PackedCompare<T>(T);
-impl<T> PackedCompare<T>
+struct PackedCompare<T, const CONTROL_BYTE: i32>(T);
+impl<T, const CONTROL_BYTE: i32> PackedCompare<T, CONTROL_BYTE>
 where
     T: PackedCompareControl,
 {
@@ -106,7 +104,7 @@ where
             self.0.needle_len(),
             haystack,
             BYTES_PER_OPERATION as i32,
-            T::CONTROL_BYTE,
+            CONTROL_BYTE,
         );
         let mask = _mm_extract_epi16(mask, 0) as u16;
 
@@ -145,7 +143,7 @@ where
             self.0.needle_len(),
             haystack,
             haystack_len,
-            T::CONTROL_BYTE,
+            CONTROL_BYTE,
         );
 
         if location < 16 {
@@ -222,12 +220,11 @@ impl Bytes {
     #[inline]
     #[target_feature(enable = "sse4.2")]
     pub unsafe fn find(&self, haystack: &[u8]) -> Option<usize> {
-        find(PackedCompare(self), haystack)
+        find(PackedCompare::<_, 0>(self), haystack)
     }
 }
 
 impl<'b> PackedCompareControl for &'b Bytes {
-    const CONTROL_BYTE: i32 = 0;
     fn needle(&self) -> __m128i {
         self.needle
     }
@@ -266,7 +263,7 @@ impl<'a> ByteSubstring<'a> {
     pub unsafe fn find(&self, haystack: &[u8]) -> Option<usize> {
         let mut offset = 0;
 
-        while let Some(idx) = find(PackedCompare(self), &haystack[offset..]) {
+        while let Some(idx) = find(PackedCompare::<_, _SIDD_CMP_EQUAL_ORDERED>(self), &haystack[offset..]) {
             let abs_offset = offset + idx;
             // Found a match, but is it really?
             if haystack[abs_offset..].starts_with(self.complete_needle) {
@@ -282,7 +279,6 @@ impl<'a> ByteSubstring<'a> {
 }
 
 impl<'a, 'b> PackedCompareControl for &'b ByteSubstring<'a> {
-    const CONTROL_BYTE: i32 = _SIDD_CMP_EQUAL_ORDERED;
     fn needle(&self) -> __m128i {
         self.needle
     }
