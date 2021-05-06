@@ -10,6 +10,17 @@ to [Semantic Versioning][].
 
 ## [Unreleased]
 
+### Fixed
+
+## [0.5.0] - 2021-05-05
+
+- Update minimum required Rust version to Rust 1.51. (#39)
+
+## [0.4.3] - 2018-08-26
+
+- Coalesce back-to-back instructions for small performance
+  improvements. (#35)
+
 ## [0.4.3] - 2018-08-26
 
 ### Fixed
