@@ -673,7 +673,7 @@ mod test {
         // Prohibit any access to the second page, so that any attempt
         // to read or write it would trigger a segfault
         unsafe {
-            region::protect(second_page.as_ptr(), page_size, Protection::None).unwrap();
+            region::protect(second_page.as_ptr(), page_size, Protection::NONE).unwrap();
         }
 
         // Copy bytes to the end of the first page
