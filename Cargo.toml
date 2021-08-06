@@ -19,5 +19,5 @@ pattern = []
 [dev-dependencies]
 proptest = "1.0.0"
 lazy_static = "1.0.0"
-region = "2.0.0"
+region = "3.0.0"
 memmap = "0.7.0"
