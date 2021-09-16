@@ -80,6 +80,11 @@ where
     haystack = &haystack[chunk_offset..];
     offset += chunk_offset;
 
+    // No data left to search
+    if haystack.is_empty() {
+        return None;
+    }
+
     // By this point, the haystack's length must be less than 16
     // bytes. It is thus reasonable to truncate it into an i32.
     debug_assert!(haystack.len() < ::std::i32::MAX as usize);
@@ -135,6 +140,12 @@ where
     #[inline]
     #[target_feature(enable = "sse4.2")]
     unsafe fn cmpestri(&self, haystack: *const u8, haystack_len: i32) -> Option<usize> {
+        debug_assert!(
+            (1..=16).contains(&haystack_len),
+            "haystack_len was {}",
+            haystack_len,
+        );
+
         // TODO: document why this is ok
         let haystack = _mm_loadu_si128(haystack as *const __m128i);
 
@@ -704,6 +715,21 @@ mod test {
                 unsafe {
                     assert_eq!(Some(tail.len() - 1), needle.find(tail.as_bytes()));
                 }
+            }
+        });
+    }
+
+    #[test]
+    fn does_not_access_memory_after_haystack_when_haystack_is_multiple_of_16_bytes_and_no_match() {
+        // For now, this test failing crashes the whole test
+        // suite. This could be fixed by setting a custom signal
+        // handler, though Rust lacks such facilities at the moment.
+        with_guarded_string("0123456789abcdef", |text| {
+            // Will search for a char not present
+            let needle = simd_bytes!(b'z');
+
+            unsafe {
+                assert_eq!(None, needle.find(text.as_bytes()));
             }
         });
     }
