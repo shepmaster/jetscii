@@ -3,7 +3,7 @@
 A tiny library to efficiently search strings for sets of ASCII
 characters or byte slices for sets of bytes.
 
-[![Build Status](https://travis-ci.org/shepmaster/jetscii.svg)](https://travis-ci.org/shepmaster/jetscii) [![Current Version](http://meritbadge.herokuapp.com/jetscii)](https://crates.io/crates/jetscii) [![Documentation](https://docs.rs/jetscii/badge.svg)][docs]
+[![Build Status](https://travis-ci.org/shepmaster/jetscii.svg)](https://travis-ci.org/shepmaster/jetscii) [![Current Version](https://img.shields.io/crates/v/jetscii.svg)](https://crates.io/crates/jetscii) [![Documentation](https://docs.rs/jetscii/badge.svg)][docs]
 
 
 ## Examples
