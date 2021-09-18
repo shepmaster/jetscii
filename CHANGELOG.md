@@ -10,7 +10,10 @@ to [Semantic Versioning][].
 
 ## [Unreleased]
 
-### Fixed
+## [0.5.1] - 2021-09-18
+
+- Avoid accessing invalid memory when the search string isn't found
+  and the haystack ends on a OS memory page. (#45)
 
 ## [0.5.0] - 2021-05-05
 
