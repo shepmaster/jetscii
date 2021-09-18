@@ -1,0 +1,44 @@
+name: Continuous Integration
+on: [push, pull_request]
+
+env:
+  RUSTFLAGS: -D warnings
+  RUSTDOCFLAGS: -D warnings
+
+jobs:
+  primary:
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        toolchain: [stable, beta, nightly]
+        features: ['']
+
+        include:
+          - os: ubuntu-latest
+            toolchain: nightly
+            features: pattern
+
+          - os: windows-latest
+            toolchain: stable
+
+          - os: macos-latest
+            toolchain: stable
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v2
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ matrix.toolchain }}
+          profile: minimal
+          default: true
+
+      - name: Run tests
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --all --features=${{ matrix.features }}
