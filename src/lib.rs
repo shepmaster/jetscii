@@ -158,7 +158,7 @@ include!(concat!(env!("OUT_DIR"), "/src/macros.rs"));
 #[cfg(target_arch = "x86_64")]
 mod simd;
 
-#[cfg(not(target_feature = "sse4.2"))]
+#[cfg(any(not(target_feature = "sse4.2"), not(target_arch = "x86_64")))]
 mod fallback;
 
 #[cfg(feature = "pattern")]
@@ -168,7 +168,7 @@ macro_rules! dispatch {
     (simd: $simd:expr,fallback: $fallback:expr,) => {
         // If we can tell at compile time that we have support,
         // call the optimized code directly.
-        #[cfg(target_feature = "sse4.2")]
+        #[cfg(all(target_feature = "sse4.2", target_arch = "x86_64"))]
         {
             $simd
         }
@@ -205,7 +205,7 @@ where
 
     // If we are *guaranteed* to have SSE 4.2, then there's no reason
     // to have this implementation.
-    #[cfg(not(target_feature = "sse4.2"))]
+    #[cfg(any(not(target_feature = "sse4.2"), not(target_arch = "x86_64")))]
     fallback: fallback::Bytes<F>,
 
     // Since we might not use the fallback implementation, we add this
@@ -229,7 +229,7 @@ where
             #[cfg(target_arch = "x86_64")]
             simd: simd::Bytes::new(bytes, len),
 
-            #[cfg(not(target_feature = "sse4.2"))]
+            #[cfg(any(not(target_feature = "sse4.2"), not(target_arch = "x86_64")))]
             fallback: fallback::Bytes::new(fallback),
 
             _fallback: PhantomData,
@@ -295,7 +295,7 @@ pub struct ByteSubstring<'a> {
 
     // If we are *guaranteed* to have SSE 4.2, then there's no reason
     // to have this implementation.
-    #[cfg(not(target_feature = "sse4.2"))]
+    #[cfg(any(not(target_feature = "sse4.2"), not(target_arch = "x86_64")))]
     fallback: fallback::ByteSubstring<'a>,
 }
 
@@ -305,7 +305,7 @@ impl<'a> ByteSubstring<'a> {
             #[cfg(target_arch = "x86_64")]
             simd: simd::ByteSubstring::new(needle),
 
-            #[cfg(not(target_feature = "sse4.2"))]
+            #[cfg(any(not(target_feature = "sse4.2"), not(target_arch = "x86_64")))]
             fallback: fallback::ByteSubstring::new(needle),
         }
     }
