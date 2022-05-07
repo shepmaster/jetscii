@@ -2,12 +2,16 @@
 //
 // Everything in this module assumes that the SSE 4.2 feature is available.
 
-use std::{
-    arch::x86_64::{
-        __m128i, _mm_cmpestri, _mm_cmpestrm, _mm_extract_epi16, _mm_loadu_si128, _SIDD_CMP_EQUAL_ORDERED,
-    },
-    cmp::min,
-    slice,
+use std::{cmp::min, slice};
+
+#[cfg(target_arch = "x86")]
+use std::arch::x86 as target_arch;
+#[cfg(target_arch = "x86_64")]
+use std::arch::x86_64 as target_arch;
+
+use self::target_arch::{
+    __m128i, _mm_cmpestri, _mm_cmpestrm, _mm_extract_epi16, _mm_loadu_si128,
+    _SIDD_CMP_EQUAL_ORDERED,
 };
 
 include!(concat!(env!("OUT_DIR"), "/src/simd_macros.rs"));
@@ -297,8 +301,6 @@ impl<'a, 'b> PackedCompareControl for &'b ByteSubstring<'a> {
         self.needle_len
     }
 }
-
-// TODO: Does x86 actually support this instruction?
 
 #[cfg(test)]
 mod test {

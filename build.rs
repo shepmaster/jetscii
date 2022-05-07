@@ -4,9 +4,26 @@ use std::io::prelude::*;
 use std::path::{Path, PathBuf};
 
 fn main() {
+    cfg();
     macros();
     simd_macros();
     println!("cargo:rerun-if-changed=build.rs");
+}
+
+fn cfg() {
+    let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
+    let target_feature = env::var("CARGO_CFG_TARGET_FEATURE").unwrap_or_default();
+
+    let ok_arch = matches!(&*target_arch, "x86" | "x86_64");
+    let sse4_2_guaranteed = target_feature.split(',').any(|f| f == "sse4.2");
+
+    if sse4_2_guaranteed {
+        println!(r#"cargo:rustc-cfg=jetscii_sse4_2="yes""#);
+    } else if ok_arch {
+        println!(r#"cargo:rustc-cfg=jetscii_sse4_2="maybe""#);
+    } else {
+        println!(r#"cargo:rustc-cfg=jetscii_sse4_2="no""#);
+    }
 }
 
 fn macros() {
