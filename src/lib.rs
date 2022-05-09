@@ -85,7 +85,7 @@
 //!
 //! ## What's so special about this library?
 //!
-//! We use a particular set of x86-64 SSE 4.2 instructions (`PCMPESTRI`
+//! We use a particular set of SSE 4.2 instructions (`PCMPESTRI`
 //! and `PCMPESTRM`) to gain great speedups. This method stays fast even
 //! when searching for a byte in a set of up to 16 choices.
 //!
@@ -155,10 +155,10 @@ use std::marker::PhantomData;
 
 include!(concat!(env!("OUT_DIR"), "/src/macros.rs"));
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(any(jetscii_sse4_2 = "yes", jetscii_sse4_2 = "maybe"))]
 mod simd;
 
-#[cfg(not(target_feature = "sse4.2"))]
+#[cfg(any(jetscii_sse4_2 = "maybe", jetscii_sse4_2 = "no"))]
 mod fallback;
 
 #[cfg(feature = "pattern")]
@@ -168,21 +168,21 @@ macro_rules! dispatch {
     (simd: $simd:expr,fallback: $fallback:expr,) => {
         // If we can tell at compile time that we have support,
         // call the optimized code directly.
-        #[cfg(target_feature = "sse4.2")]
+        #[cfg(jetscii_sse4_2 = "yes")]
         {
             $simd
         }
 
         // If we can tell at compile time that we will *never* have
         // support, call the fallback directly.
-        #[cfg(not(target_arch = "x86_64"))]
+        #[cfg(jetscii_sse4_2 = "no")]
         {
             $fallback
         }
 
         // Otherwise, we will be run on a machine with or without
         // support, so we perform runtime detection.
-        #[cfg(all(target_arch = "x86_64", not(target_feature = "sse4.2")))]
+        #[cfg(jetscii_sse4_2 = "maybe")]
         {
             if is_x86_feature_detected!("sse4.2") {
                 $simd
@@ -198,14 +198,10 @@ pub struct Bytes<F>
 where
     F: Fn(u8) -> bool,
 {
-    // Include this implementation only when compiling for x86_64 as
-    // that's the only platform that we support.
-    #[cfg(target_arch = "x86_64")]
+    #[cfg(any(jetscii_sse4_2 = "yes", jetscii_sse4_2 = "maybe"))]
     simd: simd::Bytes,
 
-    // If we are *guaranteed* to have SSE 4.2, then there's no reason
-    // to have this implementation.
-    #[cfg(not(target_feature = "sse4.2"))]
+    #[cfg(any(jetscii_sse4_2 = "maybe", jetscii_sse4_2 = "no"))]
     fallback: fallback::Bytes<F>,
 
     // Since we might not use the fallback implementation, we add this
@@ -226,10 +222,10 @@ where
     #[allow(unused_variables)]
     pub /* const */ fn new(bytes: [u8; 16], len: i32, fallback: F) -> Self {
         Bytes {
-            #[cfg(target_arch = "x86_64")]
+            #[cfg(any(jetscii_sse4_2 = "yes", jetscii_sse4_2 = "maybe"))]
             simd: simd::Bytes::new(bytes, len),
 
-            #[cfg(not(target_feature = "sse4.2"))]
+            #[cfg(any(jetscii_sse4_2 = "maybe", jetscii_sse4_2 = "no"))]
             fallback: fallback::Bytes::new(fallback),
 
             _fallback: PhantomData,
@@ -288,24 +284,20 @@ pub type AsciiCharsConst = AsciiChars<fn(u8) -> bool>;
 
 /// Searches a slice for the first occurence of the subslice.
 pub struct ByteSubstring<'a> {
-    // Include this implementation only when compiling for x86_64 as
-    // that's the only platform that we support.
-    #[cfg(target_arch = "x86_64")]
+    #[cfg(any(jetscii_sse4_2 = "yes", jetscii_sse4_2 = "maybe"))]
     simd: simd::ByteSubstring<'a>,
 
-    // If we are *guaranteed* to have SSE 4.2, then there's no reason
-    // to have this implementation.
-    #[cfg(not(target_feature = "sse4.2"))]
+    #[cfg(any(jetscii_sse4_2 = "maybe", jetscii_sse4_2 = "no"))]
     fallback: fallback::ByteSubstring<'a>,
 }
 
 impl<'a> ByteSubstring<'a> {
     pub /* const */ fn new(needle: &'a [u8]) -> Self {
         ByteSubstring {
-            #[cfg(target_arch = "x86_64")]
+            #[cfg(any(jetscii_sse4_2 = "yes", jetscii_sse4_2 = "maybe"))]
             simd: simd::ByteSubstring::new(needle),
 
-            #[cfg(not(target_feature = "sse4.2"))]
+            #[cfg(any(jetscii_sse4_2 = "maybe", jetscii_sse4_2 = "no"))]
             fallback: fallback::ByteSubstring::new(needle),
         }
     }

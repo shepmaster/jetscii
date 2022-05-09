@@ -6,39 +6,65 @@ env:
   RUSTDOCFLAGS: -D warnings
 
 jobs:
-  primary:
+  toolchains:
     strategy:
       matrix:
-        os: [ubuntu-latest]
-        toolchain: [stable, beta, nightly]
-        features: ['']
+        toolchain: ["stable", "beta", "nightly"]
 
-        include:
-          - os: ubuntu-latest
-            toolchain: nightly
-            features: pattern
-
-          - os: windows-latest
-            toolchain: stable
-
-          - os: macos-latest
-            toolchain: stable
-
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
 
     steps:
       - name: Check out code
-        uses: actions/checkout@v2
-
-      - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: ${{ matrix.toolchain }}
-          profile: minimal
-          default: true
+        uses: actions/checkout@v3
 
       - name: Run tests
-        uses: actions-rs/cargo@v1
+        uses: ./.github/actions/test
         with:
-          command: test
-          args: --all --features=${{ matrix.features }}
+          toolchain: "${{ matrix.toolchain }}"
+
+  platforms:
+    strategy:
+      matrix:
+        platform: ["windows-latest", "macos-latest"]
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v3
+
+      - name: Run tests
+        uses: ./.github/actions/test
+        with:
+          platform: "${{ matrix.platform }}"
+
+  crate_features:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v3
+
+      - name: Run tests
+        uses: ./.github/actions/test
+        with:
+          toolchain: "nightly"
+          features: "pattern"
+
+  target_features:
+    strategy:
+      matrix:
+        target_feature: ["-sse4.2", "+sse4.2"]
+        target: ["", "i686-unknown-linux-gnu"]
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v3
+
+      - name: Run tests
+        uses: ./.github/actions/test
+        with:
+          rustflags: "-C target-feature=${{ matrix.target_feature }}"
+          target: "${{ matrix.target }}"
