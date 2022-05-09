@@ -35,8 +35,6 @@ jobs:
 
       - name: Run tests
         uses: ./.github/actions/test
-        with:
-          platform: "${{ matrix.platform }}"
 
   crate_features:
     runs-on: ubuntu-latest
