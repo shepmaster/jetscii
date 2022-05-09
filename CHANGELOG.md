@@ -10,6 +10,10 @@ to [Semantic Versioning][].
 
 ## [Unreleased]
 
+## [0.5.2] - 2022-05-08
+
+- Support 32-bit code with SSE4.2. (#52)
+
 ## [0.5.1] - 2021-09-18
 
 - Avoid accessing invalid memory when the search string isn't found
