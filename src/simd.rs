@@ -28,6 +28,19 @@ trait PackedCompareControl {
     fn needle_len(&self) -> i32;
 }
 
+#[inline]
+#[target_feature(enable = "sse4.2")]
+unsafe fn find_small<C, const CONTROL_BYTE: i32>(packed: PackedCompare<C, CONTROL_BYTE>, haystack: &[u8]) -> Option<usize>
+where
+    C: PackedCompareControl,
+{
+    let mut tail = [0u8; 16];
+    core::ptr::copy_nonoverlapping(haystack.as_ptr(), tail.as_mut_ptr(), haystack.len());
+    let haystack = &tail[..haystack.len()];
+    debug_assert!(haystack.len() < ::std::i32::MAX as usize);
+    packed.cmpestri(haystack.as_ptr(), haystack.len() as i32)
+}
+
 /// The PCMPxSTRx instructions always read 16 bytes worth of
 /// data. Although the instructions handle unaligned memory access
 /// just fine, they might attempt to read off the end of a page
@@ -47,6 +60,10 @@ where
 
     if haystack.is_empty() {
         return None;
+    }
+
+    if haystack.len() < 16 {
+        return find_small(packed, haystack);
     }
 
     let mut offset = 0;
@@ -89,12 +106,7 @@ where
         return None;
     }
 
-    // By this point, the haystack's length must be less than 16
-    // bytes. It is thus reasonable to truncate it into an i32.
-    debug_assert!(haystack.len() < ::std::i32::MAX as usize);
-    packed
-        .cmpestri(haystack.as_ptr(), haystack.len() as i32)
-        .map(|loc| offset + loc)
+    find_small(packed, haystack).map(|loc| loc + offset)
 }
 
 struct PackedCompare<T, const CONTROL_BYTE: i32>(T);
