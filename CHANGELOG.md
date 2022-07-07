@@ -10,6 +10,10 @@ to [Semantic Versioning][].
 
 ## [Unreleased]
 
+## [0.5.3] - 2022-07-06
+
+- Fix buffer overflows in find. (#55)
+
 ## [0.5.2] - 2022-05-08
 
 - Support 32-bit code with SSE4.2. (#52)
