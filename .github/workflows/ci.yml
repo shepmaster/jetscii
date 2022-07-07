@@ -66,3 +66,17 @@ jobs:
         with:
           rustflags: "-C target-feature=${{ matrix.target_feature }}"
           target: "${{ matrix.target }}"
+
+  sanitizers:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v3
+
+      - name: Run tests
+        uses: ./.github/actions/test
+        with:
+          toolchain: nightly
+          rustflags: "-Z sanitizer=address"
+          rustdocflags: "-Z sanitizer=address"

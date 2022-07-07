@@ -16,6 +16,11 @@ inputs:
     required: false
     type: string
 
+  rustdocflags:
+    default: ""
+    required: false
+    type: string
+
   target:
     default: ""
     required: false
@@ -43,6 +48,7 @@ runs:
       uses: actions-rs/cargo@v1
       env:
         RUSTFLAGS: "${{ env.RUSTFLAGS }} ${{ inputs.rustflags }}"
+        RUSTDOCFLAGS: "${{ env.RUSTDOCFLAGS }} ${{ inputs.rustdocflags }}"
       with:
         command: test
         args: >-
