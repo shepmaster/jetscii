@@ -325,14 +325,25 @@ where
 /// A convenience type that can be used in a constant or static.
 pub type ByteSubstringConst = ByteSubstring<&'static [u8]>;
 
-/// Searches a string for the first occurence of the substring.
-pub struct Substring<'a>(ByteSubstring<&'a [u8]>);
+/// Searches a string for the first occurrence of the substring.
+pub struct Substring<T>(ByteSubstring<T>);
 
-impl<'a> Substring<'a> {
+impl<'a> Substring<&'a [u8]> {
     pub /* const */ fn new(needle: &'a str) -> Self {
         Substring(ByteSubstring::new(needle.as_bytes()))
     }
+}
 
+impl Substring<Vec<u8>> {
+    pub fn new_owned(needle: String) -> Self {
+        Substring(ByteSubstring::new(needle.into_bytes()))
+    }
+}
+
+impl<T> Substring<T>
+where
+    T: AsRef<[u8]>,
+{
     #[cfg(feature = "pattern")]
     fn needle_len(&self) -> usize {
         self.0.needle_len()
@@ -346,7 +357,7 @@ impl<'a> Substring<'a> {
 }
 
 /// A convenience type that can be used in a constant or static.
-pub type SubstringConst = Substring<'static>;
+pub type SubstringConst = Substring<&'static [u8]>;
 
 #[cfg(all(test, feature = "benchmarks"))]
 mod bench {
@@ -479,7 +490,7 @@ mod bench {
     }
 
     lazy_static! {
-        static ref XYZZY: Substring<'static> = Substring::new("xyzzy");
+        static ref XYZZY: SubstringConst = Substring::new("xyzzy");
     }
 
     fn bench_substring<F>(b: &mut test::Bencher, f: F)
