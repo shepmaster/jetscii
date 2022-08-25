@@ -282,16 +282,19 @@ where
 pub type AsciiCharsConst = AsciiChars<fn(u8) -> bool>;
 
 /// Searches a slice for the first occurence of the subslice.
-pub struct ByteSubstring<'a> {
+pub struct ByteSubstring<T> {
     #[cfg(any(jetscii_sse4_2 = "yes", jetscii_sse4_2 = "maybe"))]
     simd: simd::ByteSubstring<'a>,
 
     #[cfg(any(jetscii_sse4_2 = "maybe", jetscii_sse4_2 = "no"))]
-    fallback: fallback::ByteSubstring<'a>,
+    fallback: fallback::ByteSubstring<T>,
 }
 
-impl<'a> ByteSubstring<'a> {
-    pub /* const */ fn new(needle: &'a [u8]) -> Self {
+impl<T> ByteSubstring<T>
+where
+    T: AsRef<[u8]>,
+{
+    pub /* const */ fn new(needle: T) -> Self {
         ByteSubstring {
             #[cfg(any(jetscii_sse4_2 = "yes", jetscii_sse4_2 = "maybe"))]
             simd: simd::ByteSubstring::new(needle),
@@ -320,10 +323,10 @@ impl<'a> ByteSubstring<'a> {
 }
 
 /// A convenience type that can be used in a constant or static.
-pub type ByteSubstringConst = ByteSubstring<'static>;
+pub type ByteSubstringConst = ByteSubstring<&'static [u8]>;
 
 /// Searches a string for the first occurence of the substring.
-pub struct Substring<'a>(ByteSubstring<'a>);
+pub struct Substring<'a>(ByteSubstring<&'a [u8]>);
 
 impl<'a> Substring<'a> {
     pub /* const */ fn new(needle: &'a str) -> Self {

@@ -260,19 +260,22 @@ impl<'b> PackedCompareControl for &'b Bytes {
     }
 }
 
-pub struct ByteSubstring<'a> {
-    complete_needle: &'a [u8],
+pub struct ByteSubstring<T> {
+    complete_needle: T,
     needle: __m128i,
     needle_len: i32,
 }
 
-impl<'a> ByteSubstring<'a> {
-    pub /* const */ fn new(needle: &'a[u8]) -> Self {
+impl<T> ByteSubstring<T>
+where
+    T: AsRef<[u8]>,
+{
+    pub /* const */ fn new(needle: T) -> Self {
         use std::cmp;
 
         let mut simd_needle = [0; 16];
         let len = cmp::min(simd_needle.len(), needle.len());
-        simd_needle[..len].copy_from_slice(&needle[..len]);
+        simd_needle[..len].copy_from_slice(&needle.as_ref()[..len]);
         ByteSubstring {
             complete_needle: needle,
             needle: unsafe { TransmuteToSimd { bytes: simd_needle }.simd },
@@ -282,7 +285,7 @@ impl<'a> ByteSubstring<'a> {
 
     #[cfg(feature = "pattern")]
     pub fn needle_len(&self) -> usize {
-        self.complete_needle.len()
+        self.complete_needle.as_ref().len()
     }
 
     #[inline]
@@ -293,7 +296,7 @@ impl<'a> ByteSubstring<'a> {
         while let Some(idx) = find(PackedCompare::<_, _SIDD_CMP_EQUAL_ORDERED>(self), &haystack[offset..]) {
             let abs_offset = offset + idx;
             // Found a match, but is it really?
-            if haystack[abs_offset..].starts_with(self.complete_needle) {
+            if haystack[abs_offset..].starts_with(self.complete_needle.as_ref()) {
                 return Some(abs_offset);
             }
 
