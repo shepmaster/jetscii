@@ -259,7 +259,7 @@ where
 /// A convenience type that can be used in a constant or static.
 pub type AsciiCharsConst = AsciiChars<fn(u8) -> bool>;
 
-/// Searches a slice for the first occurence of the subslice.
+/// Searches a slice for the first occurrence of the subslice.
 pub enum ByteSubstring<T> {
     #[cfg(any(jetscii_sse4_2 = "yes", jetscii_sse4_2 = "maybe"))]
     SIMD(simd::ByteSubstring<T>),
@@ -301,7 +301,7 @@ where
         }
     }
 
-    /// Searches the slice for the first occurence of the subslice.
+    /// Searches the slice for the first occurrence of the subslice.
     #[inline]
     pub fn find(&self, haystack: &[u8]) -> Option<usize> {
         match self {
@@ -340,7 +340,7 @@ where
         self.0.needle_len()
     }
 
-    /// Searches the string for the first occurence of the substring.
+    /// Searches the string for the first occurrence of the substring.
     #[inline]
     pub fn find(&self, haystack: &str) -> Option<usize> {
         self.0.find(haystack.as_bytes())
