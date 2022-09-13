@@ -142,7 +142,6 @@
 //! | <code>s.find("xyzzy")</code>                     | 5391 MB/s      |
 
 #[cfg(test)]
-#[macro_use]
 extern crate lazy_static;
 #[cfg(test)]
 extern crate memmap;
@@ -349,6 +348,7 @@ pub type SubstringConst = Substring<'static>;
 #[cfg(all(test, feature = "benchmarks"))]
 mod bench {
     extern crate test;
+    use lazy_static::lazy_static;
 
     use super::*;
 
