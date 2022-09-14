@@ -349,6 +349,10 @@ where
 
 /// A convenience type that can be used in a constant or static.
 pub type SubstringConst = Substring<&'static [u8]>;
+/// A convenience type to save the need to specify that the inner object is a slice.
+pub type SubstringRef<'a> = Substring<&'a [u8]>;
+/// A convenience type to save the need to specify that the inner object is owned.
+pub type SubstringOwned = Substring<Vec<u8>>;
 
 #[cfg(all(test, feature = "benchmarks"))]
 mod bench {
