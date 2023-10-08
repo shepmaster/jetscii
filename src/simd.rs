@@ -320,6 +320,7 @@ mod test {
     use std::{fmt, str};
     use memmap::MmapMut;
     use region::Protection;
+    use lazy_static::lazy_static;
 
     use super::*;
 
