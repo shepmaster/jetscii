@@ -207,7 +207,7 @@ where
     /// intrinsics are not available. The closure **must** search for
     /// the same bytes as in the array.
     #[allow(unused_variables)]
-    pub fn new(bytes: [u8; 16], len: i32, fallback: F) -> Self {
+    pub const fn new(bytes: [u8; 16], len: i32, fallback: F) -> Self {
         Bytes {
             #[cfg(any(jetscii_sse4_2 = "yes", jetscii_sse4_2 = "maybe"))]
             simd: simd::Bytes::new(bytes, len),
@@ -252,9 +252,11 @@ where
     /// ### Panics
     ///
     /// - If you provide a non-ASCII byte.
-    pub fn new(chars: [u8; 16], len: i32, fallback: F) -> Self {
-        for &b in &chars {
-            assert!(b < 128, "Cannot have non-ASCII bytes");
+    pub const fn new(chars: [u8; 16], len: i32, fallback: F) -> Self {
+        let mut i = 0;
+        while i < chars.len() {
+            assert!(chars[i] < 128, "Cannot have non-ASCII bytes");
+            i += 1;
         }
         AsciiChars(Bytes::new(chars, len, fallback))
     }
@@ -279,7 +281,7 @@ pub struct ByteSubstring<'a> {
 }
 
 impl<'a> ByteSubstring<'a> {
-    pub fn new(needle: &'a [u8]) -> Self {
+    pub const fn new(needle: &'a [u8]) -> Self {
         ByteSubstring {
             #[cfg(any(jetscii_sse4_2 = "yes", jetscii_sse4_2 = "maybe"))]
             simd: simd::ByteSubstring::new(needle),
@@ -314,7 +316,7 @@ pub type ByteSubstringConst = ByteSubstring<'static>;
 pub struct Substring<'a>(ByteSubstring<'a>);
 
 impl<'a> Substring<'a> {
-    pub fn new(needle: &'a str) -> Self {
+    pub const fn new(needle: &'a str) -> Self {
         Substring(ByteSubstring::new(needle.as_bytes()))
     }
 

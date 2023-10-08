@@ -237,7 +237,7 @@ pub struct Bytes {
 }
 
 impl Bytes {
-    pub /* const */ fn new(bytes: [u8; 16], needle_len: i32) -> Self {
+    pub const fn new(bytes: [u8; 16], needle_len: i32) -> Self {
         Bytes {
             needle: unsafe { TransmuteToSimd { bytes }.simd },
             needle_len,
@@ -267,12 +267,18 @@ pub struct ByteSubstring<'a> {
 }
 
 impl<'a> ByteSubstring<'a> {
-    pub /* const */ fn new(needle: &'a[u8]) -> Self {
-        use std::cmp;
-
+    pub const fn new(needle: &'a[u8]) -> Self {
         let mut simd_needle = [0; 16];
-        let len = cmp::min(simd_needle.len(), needle.len());
-        simd_needle[..len].copy_from_slice(&needle[..len]);
+        let len = if simd_needle.len() < needle.len() {
+            simd_needle.len()
+        } else {
+            needle.len()
+        };
+        let mut i = 0;
+        while i < len {
+            simd_needle[i] = needle[i];
+            i += 1;
+        }
         ByteSubstring {
             complete_needle: needle,
             needle: unsafe { TransmuteToSimd { bytes: simd_needle }.simd },
@@ -281,7 +287,7 @@ impl<'a> ByteSubstring<'a> {
     }
 
     #[cfg(feature = "pattern")]
-    pub fn needle_len(&self) -> usize {
+    pub const fn needle_len(&self) -> usize {
         self.complete_needle.len()
     }
 
