@@ -9,8 +9,7 @@
 //! ### Searching for a set of ASCII characters
 //!
 //! ```rust
-//! #[macro_use]
-//! extern crate jetscii;
+//! use jetscii::ascii_chars;
 //!
 //! fn main() {
 //!     let part_number = "86-J52:rev1";
@@ -22,8 +21,7 @@
 //! ### Searching for a set of bytes
 //!
 //! ```rust
-//! #[macro_use]
-//! extern crate jetscii;
+//! use jetscii::bytes;
 //!
 //! fn main() {
 //!     let raw_data = [0x00, 0x01, 0x10, 0xFF, 0x42];
@@ -61,8 +59,7 @@
 //!
 //! ```
 //! # #[cfg(feature = "pattern")]
-//! #[macro_use]
-//! extern crate jetscii;
+//! use jetscii::ascii_chars;
 //!
 //! fn main() {
 //! # #[cfg(feature = "pattern")] {
@@ -141,16 +138,6 @@
 //! | **<code>Substring::new("xyzzy").find(s)</code>** | **11475 MB/s** |
 //! | <code>s.find("xyzzy")</code>                     | 5391 MB/s      |
 
-#[cfg(test)]
-#[macro_use]
-extern crate lazy_static;
-#[cfg(test)]
-extern crate memmap;
-#[cfg(test)]
-extern crate proptest;
-#[cfg(test)]
-extern crate region;
-
 use std::marker::PhantomData;
 
 include!(concat!(env!("OUT_DIR"), "/src/macros.rs"));
@@ -220,7 +207,7 @@ where
     /// intrinsics are not available. The closure **must** search for
     /// the same bytes as in the array.
     #[allow(unused_variables)]
-    pub /* const */ fn new(bytes: [u8; 16], len: i32, fallback: F) -> Self {
+    pub fn new(bytes: [u8; 16], len: i32, fallback: F) -> Self {
         Bytes {
             #[cfg(any(jetscii_sse4_2 = "yes", jetscii_sse4_2 = "maybe"))]
             simd: simd::Bytes::new(bytes, len),
@@ -265,7 +252,7 @@ where
     /// ### Panics
     ///
     /// - If you provide a non-ASCII byte.
-    pub /* const */ fn new(chars: [u8; 16], len: i32, fallback: F) -> Self {
+    pub fn new(chars: [u8; 16], len: i32, fallback: F) -> Self {
         for &b in &chars {
             assert!(b < 128, "Cannot have non-ASCII bytes");
         }
@@ -292,7 +279,7 @@ pub struct ByteSubstring<'a> {
 }
 
 impl<'a> ByteSubstring<'a> {
-    pub /* const */ fn new(needle: &'a [u8]) -> Self {
+    pub fn new(needle: &'a [u8]) -> Self {
         ByteSubstring {
             #[cfg(any(jetscii_sse4_2 = "yes", jetscii_sse4_2 = "maybe"))]
             simd: simd::ByteSubstring::new(needle),
@@ -327,7 +314,7 @@ pub type ByteSubstringConst = ByteSubstring<'static>;
 pub struct Substring<'a>(ByteSubstring<'a>);
 
 impl<'a> Substring<'a> {
-    pub /* const */ fn new(needle: &'a str) -> Self {
+    pub fn new(needle: &'a str) -> Self {
         Substring(ByteSubstring::new(needle.as_bytes()))
     }
 
@@ -349,6 +336,8 @@ pub type SubstringConst = Substring<'static>;
 #[cfg(all(test, feature = "benchmarks"))]
 mod bench {
     extern crate test;
+
+    use lazy_static::lazy_static;
 
     use super::*;
 
