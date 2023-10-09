@@ -180,10 +180,7 @@ macro_rules! dispatch {
 }
 
 /// Searches a slice for a set of bytes. Up to 16 bytes may be used.
-pub struct Bytes<F>
-where
-    F: Fn(u8) -> bool,
-{
+pub struct Bytes<F> {
     #[cfg(any(jetscii_sse4_2 = "yes", jetscii_sse4_2 = "maybe"))]
     simd: simd::Bytes,
 
@@ -255,9 +252,7 @@ pub type BytesConst = Bytes<fn(u8) -> bool>;
 
 /// Searches a string for a set of ASCII characters. Up to 16
 /// characters may be used.
-pub struct AsciiChars<F>(Bytes<F>)
-where
-    F: Fn(u8) -> bool;
+pub struct AsciiChars<F>(Bytes<F>);
 
 impl<F> AsciiChars<F>
 where
