@@ -15,6 +15,7 @@ license = "MIT OR Apache-2.0"
 edition = "2018"
 
 [features]
+# This feature is now a no-op, but we keep it around for backwards compatibility
 benchmarks = []
 pattern = []
 
@@ -23,3 +24,9 @@ proptest = "1.0.0"
 lazy_static = "1.0.0"
 region = "3.0.0"
 memmap = "0.7.0"
+criterion = "0.5.0"
+memchr = "2.0.0"
+
+[[bench]]
+name = "benchmarks"
+harness = false
