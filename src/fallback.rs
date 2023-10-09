@@ -1,10 +1,7 @@
 // TODO: Try boxing the closure to see if we can hide the type
 // TODO: Or maybe use a function pointer?
 
-pub struct Bytes<F>
-where
-    F: Fn(u8) -> bool,
-{
+pub struct Bytes<F> {
     fallback: F,
 }
 
