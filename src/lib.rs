@@ -203,6 +203,7 @@ where
     /// intrinsics are not available. The closure **must** search for
     /// the same bytes as in the array.
     #[allow(unused_variables)]
+    #[must_use]
     pub fn new(bytes: [u8; 16], len: i32, fallback: F) -> Self {
         Bytes {
             #[cfg(any(jetscii_sse4_2 = "yes", jetscii_sse4_2 = "maybe"))]
@@ -222,6 +223,7 @@ where
     // the fallback at all, so it will be dropped in this function.
     #[doc(hidden)]
     #[allow(unused_variables)]
+    #[must_use]
     pub const fn new_const(bytes: [u8; 16], len: i32, fallback: F) -> Self
     where
         F: Copy,
@@ -239,6 +241,7 @@ where
 
     /// Searches the slice for the first matching byte in the set.
     #[inline]
+    #[must_use]
     pub fn find(&self, haystack: &[u8]) -> Option<usize> {
         dispatch! {
             simd: unsafe { self.simd.find(haystack) },
@@ -268,6 +271,7 @@ where
     /// ### Panics
     ///
     /// - If you provide a non-ASCII byte.
+    #[must_use]
     pub fn new(chars: [u8; 16], len: i32, fallback: F) -> Self {
         for &b in &chars {
             assert!(b < 128, "Cannot have non-ASCII bytes");
@@ -281,6 +285,7 @@ where
     // (thus, have no destructor). If we _know_ we're using sse4.2, we don't use
     // the fallback at all, so it will be dropped in this function.
     #[doc(hidden)]
+    #[must_use]
     pub const fn new_const(chars: [u8; 16], len: i32, fallback: F) -> Self
     where
         F: Copy,
@@ -295,6 +300,7 @@ where
 
     /// Searches the string for the first matching ASCII byte in the set.
     #[inline]
+    #[must_use]
     pub fn find(&self, haystack: &str) -> Option<usize> {
         self.0.find(haystack.as_bytes())
     }
@@ -313,6 +319,7 @@ pub struct ByteSubstring<'a> {
 }
 
 impl<'a> ByteSubstring<'a> {
+    #[must_use]
     pub const fn new(needle: &'a [u8]) -> Self {
         ByteSubstring {
             #[cfg(any(jetscii_sse4_2 = "yes", jetscii_sse4_2 = "maybe"))]
@@ -324,6 +331,7 @@ impl<'a> ByteSubstring<'a> {
     }
 
     #[cfg(feature = "pattern")]
+    #[must_use]
     fn needle_len(&self) -> usize {
         dispatch! {
             simd: self.simd.needle_len(),
@@ -333,6 +341,7 @@ impl<'a> ByteSubstring<'a> {
 
     /// Searches the slice for the first occurence of the subslice.
     #[inline]
+    #[must_use]
     pub fn find(&self, haystack: &[u8]) -> Option<usize> {
         dispatch! {
             simd: unsafe { self.simd.find(haystack) },
@@ -348,17 +357,20 @@ pub type ByteSubstringConst = ByteSubstring<'static>;
 pub struct Substring<'a>(ByteSubstring<'a>);
 
 impl<'a> Substring<'a> {
+    #[must_use]
     pub const fn new(needle: &'a str) -> Self {
         Substring(ByteSubstring::new(needle.as_bytes()))
     }
 
     #[cfg(feature = "pattern")]
+    #[must_use]
     fn needle_len(&self) -> usize {
         self.0.needle_len()
     }
 
     /// Searches the string for the first occurence of the substring.
     #[inline]
+    #[must_use]
     pub fn find(&self, haystack: &str) -> Option<usize> {
         self.0.find(haystack.as_bytes())
     }
