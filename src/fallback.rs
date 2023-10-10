@@ -14,7 +14,7 @@ where
     }
 
     pub fn find(&self, haystack: &[u8]) -> Option<usize> {
-        haystack.iter().cloned().position(&self.fallback)
+        haystack.iter().copied().position(&self.fallback)
     }
 }
 

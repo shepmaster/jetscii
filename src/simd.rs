@@ -41,7 +41,7 @@ where
     packed.cmpestri(haystack.as_ptr(), haystack.len() as i32)
 }
 
-/// The PCMPxSTRx instructions always read 16 bytes worth of
+/// The `PCMPxSTRx` instructions always read 16 bytes worth of
 /// data. Although the instructions handle unaligned memory access
 /// just fine, they might attempt to read off the end of a page
 /// and into a protected area.
