@@ -207,8 +207,30 @@ where
     /// intrinsics are not available. The closure **must** search for
     /// the same bytes as in the array.
     #[allow(unused_variables)]
-    pub const fn new(bytes: [u8; 16], len: i32, fallback: F) -> Self {
+    pub fn new(bytes: [u8; 16], len: i32, fallback: F) -> Self {
         Bytes {
+            #[cfg(any(jetscii_sse4_2 = "yes", jetscii_sse4_2 = "maybe"))]
+            simd: simd::Bytes::new(bytes, len),
+
+            #[cfg(any(jetscii_sse4_2 = "maybe", jetscii_sse4_2 = "no"))]
+            fallback: fallback::Bytes::new(fallback),
+
+            _fallback: PhantomData,
+        }
+    }
+
+    // This constructor is used by the `bytes!` macro, and shouldn't be relied on directly.
+    //
+    // To allow F to be dropped in a const context, we require F to be Copy
+    // (thus, have no destructor). If we _know_ we're using sse4.2, we don't use
+    // the fallback at all, so it will be dropped in this function.
+    #[doc(hidden)]
+    #[allow(unused_variables)]
+    pub const fn new_const(bytes: [u8; 16], len: i32, fallback: F) -> Self
+    where
+        F: Copy,
+    {
+        Self {
             #[cfg(any(jetscii_sse4_2 = "yes", jetscii_sse4_2 = "maybe"))]
             simd: simd::Bytes::new(bytes, len),
 
@@ -252,13 +274,29 @@ where
     /// ### Panics
     ///
     /// - If you provide a non-ASCII byte.
-    pub const fn new(chars: [u8; 16], len: i32, fallback: F) -> Self {
+    pub fn new(chars: [u8; 16], len: i32, fallback: F) -> Self {
+        for &b in &chars {
+            assert!(b < 128, "Cannot have non-ASCII bytes");
+        }
+        Self(Bytes::new(chars, len, fallback))
+    }
+
+    // This constructor is used by the `ascii_chars!` macro, and shouldn't be relied on directly.
+    //
+    // To allow F to be dropped in a const context, we require F to be Copy
+    // (thus, have no destructor). If we _know_ we're using sse4.2, we don't use
+    // the fallback at all, so it will be dropped in this function.
+    #[doc(hidden)]
+    pub const fn new_const(chars: [u8; 16], len: i32, fallback: F) -> Self
+    where
+        F: Copy,
+    {
         let mut i = 0;
         while i < chars.len() {
             assert!(chars[i] < 128, "Cannot have non-ASCII bytes");
             i += 1;
         }
-        AsciiChars(Bytes::new(chars, len, fallback))
+        Self(Bytes::new_const(chars, len, fallback))
     }
 
     /// Searches the string for the first matching ASCII byte in the set.
