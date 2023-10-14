@@ -252,9 +252,12 @@ impl Bytes {
 }
 
 impl<'b> PackedCompareControl for &'b Bytes {
+    #[inline]
     fn needle(&self) -> __m128i {
         self.needle
     }
+
+    #[inline]
     fn needle_len(&self) -> i32 {
         self.needle_len
     }
@@ -312,9 +315,12 @@ impl<'a> ByteSubstring<'a> {
 }
 
 impl<'a, 'b> PackedCompareControl for &'b ByteSubstring<'a> {
+    #[inline]
     fn needle(&self) -> __m128i {
         self.needle
     }
+
+    #[inline]
     fn needle_len(&self) -> i32 {
         self.needle_len
     }
