@@ -40,6 +40,10 @@ fn spaces(c: &mut Criterion) {
     group.bench_function("stdlib_iter_position", |b| {
         b.iter(|| haystack.bytes().position(|c| c == b' '));
     });
+    group.bench_function("teddy", |b| {
+        let searcher = aho_corasick::packed::Searcher::new([" "]).unwrap();
+        b.iter(|| searcher.find(&haystack).map(|m| m.start()));
+    });
     group.bench_function("memchr", |b| {
         b.iter(|| memchr::memchr(b' ', haystack.as_bytes()));
     });
@@ -69,6 +73,10 @@ fn xml3(c: &mut Criterion) {
                 .position(|c| c == b'<' || c == b'>' || c == b'&')
         });
     });
+    group.bench_function("teddy", |b| {
+        let searcher = aho_corasick::packed::Searcher::new(["<", ">", "&"]).unwrap();
+        b.iter(|| searcher.find(&haystack).map(|m| m.start()));
+    });
     group.bench_function("memchr", |b| {
         b.iter(|| memchr::memchr3(b'<', b'>', b'&', haystack.as_bytes()));
     });
@@ -97,6 +105,10 @@ fn xml5(c: &mut Criterion) {
                 .bytes()
                 .position(|c| c == b'<' || c == b'>' || c == b'&' || c == b'\'' || c == b'"')
         });
+    });
+    group.bench_function("teddy", |b| {
+        let searcher = aho_corasick::packed::Searcher::new(["<", ">", "&", "'", "\""]).unwrap();
+        b.iter(|| searcher.find(&haystack).map(|m| m.start()));
     });
     group.bench_function("memchr", |b| {
         b.iter(|| {
@@ -173,6 +185,10 @@ fn big_16(c: &mut Criterion) {
                     || c == b'P'
             })
         });
+    });
+    group.bench_function("teddy", |b| {
+        let searcher = aho_corasick::packed::Searcher::new(b"ABCDEFGHIJKLMNOP".iter().map(|b| std::array::from_ref(b))).unwrap();
+        b.iter(|| searcher.find(&haystack).map(|m| m.start()));
     });
     group.bench_function("memchr", |b| {
         b.iter(|| {
@@ -252,6 +268,10 @@ fn big_16(c: &mut Criterion) {
                     || c == b'P'
             })
         });
+    });
+    group.bench_function("teddy", |b| {
+        let searcher = aho_corasick::packed::Searcher::new(b"ABCDEFGHIJKLMNOP".iter().map(|b| std::array::from_ref(b))).unwrap();
+        b.iter(|| searcher.find(&haystack).map(|m| m.start()));
     });
     group.bench_function("memchr", |b| {
         b.iter(|| {
