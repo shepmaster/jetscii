@@ -20,6 +20,7 @@ benchmarks = []
 pattern = []
 
 [dev-dependencies]
+aho-corasick = "1.1.0"
 proptest = "1.0.0"
 lazy_static = "1.0.0"
 region = "3.0.0"
