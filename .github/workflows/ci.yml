@@ -53,7 +53,7 @@ jobs:
     strategy:
       matrix:
         target_feature: ["-sse4.2", "+sse4.2"]
-        target: ["", "i686-unknown-linux-gnu"]
+        cross-target: ["", "i686-unknown-linux-gnu"]
 
     runs-on: ubuntu-latest
 
@@ -65,7 +65,7 @@ jobs:
         uses: ./.github/actions/test
         with:
           rustflags: "-C target-feature=${{ matrix.target_feature }}"
-          target: "${{ matrix.target }}"
+          cross-target: "${{ matrix.cross-target }}"
 
   sanitizers:
     runs-on: ubuntu-latest
