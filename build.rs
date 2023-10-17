@@ -58,7 +58,7 @@ fn macros_bytes(f: &mut File, base: &Path) {
             let closure = format!("|c| {}", closure_body.join(" || "));
 
             format!(
-                "({}) => ($crate::Bytes::new([{}], {}, {}));\n",
+                "({}) => ($crate::Bytes::new_const([{}], {}, {}));\n",
                 args, array, max, closure
             )
         })
@@ -93,7 +93,7 @@ fn macros_ascii_chars(f: &mut File, base: &Path) {
             let closure = format!("|c| {}", closure_body.join(" || "));
 
             format!(
-                "({}) => ($crate::AsciiChars::new([{}], {}, {}));\n",
+                "({}) => ($crate::AsciiChars::new_const([{}], {}, {}));\n",
                 args, array, max, closure
             )
         })
