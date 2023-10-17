@@ -78,5 +78,6 @@ jobs:
         uses: ./.github/actions/test
         with:
           toolchain: nightly
+          target: "x86_64-unknown-linux-gnu"
           rustflags: "-Z sanitizer=address"
           rustdocflags: "-Z sanitizer=address"
