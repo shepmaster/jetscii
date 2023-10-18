@@ -1,5 +1,4 @@
 #![cfg_attr(feature = "pattern", feature(pattern))]
-#![cfg_attr(feature = "benchmarks", feature(test))]
 
 //! A tiny library to efficiently search strings for sets of ASCII
 //! characters or byte slices for sets of bytes.
@@ -9,8 +8,7 @@
 //! ### Searching for a set of ASCII characters
 //!
 //! ```rust
-//! #[macro_use]
-//! extern crate jetscii;
+//! use jetscii::ascii_chars;
 //!
 //! fn main() {
 //!     let part_number = "86-J52:rev1";
@@ -22,8 +20,7 @@
 //! ### Searching for a set of bytes
 //!
 //! ```rust
-//! #[macro_use]
-//! extern crate jetscii;
+//! use jetscii::bytes;
 //!
 //! fn main() {
 //!     let raw_data = [0x00, 0x01, 0x10, 0xFF, 0x42];
@@ -61,8 +58,7 @@
 //!
 //! ```
 //! # #[cfg(feature = "pattern")]
-//! #[macro_use]
-//! extern crate jetscii;
+//! use jetscii::ascii_chars;
 //!
 //! fn main() {
 //! # #[cfg(feature = "pattern")] {
@@ -141,16 +137,6 @@
 //! | **<code>Substring::new("xyzzy").find(s)</code>** | **11475 MB/s** |
 //! | <code>s.find("xyzzy")</code>                     | 5391 MB/s      |
 
-#[cfg(test)]
-#[macro_use]
-extern crate lazy_static;
-#[cfg(test)]
-extern crate memmap;
-#[cfg(test)]
-extern crate proptest;
-#[cfg(test)]
-extern crate region;
-
 use std::marker::PhantomData;
 
 include!(concat!(env!("OUT_DIR"), "/src/macros.rs"));
@@ -194,10 +180,7 @@ macro_rules! dispatch {
 }
 
 /// Searches a slice for a set of bytes. Up to 16 bytes may be used.
-pub struct Bytes<F>
-where
-    F: Fn(u8) -> bool,
-{
+pub struct Bytes<F> {
     #[cfg(any(jetscii_sse4_2 = "yes", jetscii_sse4_2 = "maybe"))]
     simd: simd::Bytes,
 
@@ -220,7 +203,8 @@ where
     /// intrinsics are not available. The closure **must** search for
     /// the same bytes as in the array.
     #[allow(unused_variables)]
-    pub /* const */ fn new(bytes: [u8; 16], len: i32, fallback: F) -> Self {
+    #[must_use]
+    pub fn new(bytes: [u8; 16], len: i32, fallback: F) -> Self {
         Bytes {
             #[cfg(any(jetscii_sse4_2 = "yes", jetscii_sse4_2 = "maybe"))]
             simd: simd::Bytes::new(bytes, len),
@@ -234,6 +218,7 @@ where
 
     /// Searches the slice for the first matching byte in the set.
     #[inline]
+    #[must_use]
     pub fn find(&self, haystack: &[u8]) -> Option<usize> {
         dispatch! {
             simd: unsafe { self.simd.find(haystack) },
@@ -247,9 +232,7 @@ pub type BytesConst = Bytes<fn(u8) -> bool>;
 
 /// Searches a string for a set of ASCII characters. Up to 16
 /// characters may be used.
-pub struct AsciiChars<F>(Bytes<F>)
-where
-    F: Fn(u8) -> bool;
+pub struct AsciiChars<F>(Bytes<F>);
 
 impl<F> AsciiChars<F>
 where
@@ -265,15 +248,17 @@ where
     /// ### Panics
     ///
     /// - If you provide a non-ASCII byte.
-    pub /* const */ fn new(chars: [u8; 16], len: i32, fallback: F) -> Self {
+    #[must_use]
+    pub fn new(chars: [u8; 16], len: i32, fallback: F) -> Self {
         for &b in &chars {
             assert!(b < 128, "Cannot have non-ASCII bytes");
         }
-        AsciiChars(Bytes::new(chars, len, fallback))
+        Self(Bytes::new(chars, len, fallback))
     }
 
     /// Searches the string for the first matching ASCII byte in the set.
     #[inline]
+    #[must_use]
     pub fn find(&self, haystack: &str) -> Option<usize> {
         self.0.find(haystack.as_bytes())
     }
@@ -292,7 +277,8 @@ pub struct ByteSubstring<'a> {
 }
 
 impl<'a> ByteSubstring<'a> {
-    pub /* const */ fn new(needle: &'a [u8]) -> Self {
+    #[must_use]
+    pub fn new(needle: &'a [u8]) -> Self {
         ByteSubstring {
             #[cfg(any(jetscii_sse4_2 = "yes", jetscii_sse4_2 = "maybe"))]
             simd: simd::ByteSubstring::new(needle),
@@ -303,6 +289,7 @@ impl<'a> ByteSubstring<'a> {
     }
 
     #[cfg(feature = "pattern")]
+    #[must_use]
     fn needle_len(&self) -> usize {
         dispatch! {
             simd: self.simd.needle_len(),
@@ -312,6 +299,7 @@ impl<'a> ByteSubstring<'a> {
 
     /// Searches the slice for the first occurence of the subslice.
     #[inline]
+    #[must_use]
     pub fn find(&self, haystack: &[u8]) -> Option<usize> {
         dispatch! {
             simd: unsafe { self.simd.find(haystack) },
@@ -327,17 +315,20 @@ pub type ByteSubstringConst = ByteSubstring<'static>;
 pub struct Substring<'a>(ByteSubstring<'a>);
 
 impl<'a> Substring<'a> {
-    pub /* const */ fn new(needle: &'a str) -> Self {
+    #[must_use]
+    pub fn new(needle: &'a str) -> Self {
         Substring(ByteSubstring::new(needle.as_bytes()))
     }
 
     #[cfg(feature = "pattern")]
+    #[must_use]
     fn needle_len(&self) -> usize {
         self.0.needle_len()
     }
 
     /// Searches the string for the first occurence of the substring.
     #[inline]
+    #[must_use]
     pub fn find(&self, haystack: &str) -> Option<usize> {
         self.0.find(haystack.as_bytes())
     }
@@ -345,158 +336,3 @@ impl<'a> Substring<'a> {
 
 /// A convenience type that can be used in a constant or static.
 pub type SubstringConst = Substring<'static>;
-
-#[cfg(all(test, feature = "benchmarks"))]
-mod bench {
-    extern crate test;
-
-    use super::*;
-
-    lazy_static! {
-        static ref SPACE: AsciiCharsConst = ascii_chars!(' ');
-        static ref XML_DELIM_3: AsciiCharsConst = ascii_chars!('<', '>', '&');
-        static ref XML_DELIM_5: AsciiCharsConst = ascii_chars!('<', '>', '&', '\'', '"');
-    }
-
-    fn prefix_string() -> String {
-        "a".repeat(5 * 1024 * 1024)
-    }
-
-    fn bench_space<F>(b: &mut test::Bencher, f: F)
-    where
-        F: Fn(&str) -> Option<usize>,
-    {
-        let mut haystack = prefix_string();
-        haystack.push(' ');
-
-        b.iter(|| test::black_box(f(&haystack)));
-        b.bytes = haystack.len() as u64;
-    }
-
-    #[bench]
-    fn space_ascii_chars(b: &mut test::Bencher) {
-        bench_space(b, |hs| SPACE.find(hs))
-    }
-
-    #[bench]
-    fn space_stdlib_find_string(b: &mut test::Bencher) {
-        bench_space(b, |hs| hs.find(" "))
-    }
-
-    #[bench]
-    fn space_stdlib_find_char(b: &mut test::Bencher) {
-        bench_space(b, |hs| hs.find(' '))
-    }
-
-    #[bench]
-    fn space_stdlib_find_char_set(b: &mut test::Bencher) {
-        bench_space(b, |hs| hs.find(&[' '][..]))
-    }
-
-    #[bench]
-    fn space_stdlib_find_closure(b: &mut test::Bencher) {
-        bench_space(b, |hs| hs.find(|c| c == ' '))
-    }
-
-    #[bench]
-    fn space_stdlib_iterator_position(b: &mut test::Bencher) {
-        bench_space(b, |hs| hs.as_bytes().iter().position(|&v| v == b' '))
-    }
-
-    fn bench_xml_delim_3<F>(b: &mut test::Bencher, f: F)
-    where
-        F: Fn(&str) -> Option<usize>,
-    {
-        let mut haystack = prefix_string();
-        haystack.push('&');
-
-        b.iter(|| test::black_box(f(&haystack)));
-        b.bytes = haystack.len() as u64;
-    }
-
-    #[bench]
-    fn xml_delim_3_ascii_chars(b: &mut test::Bencher) {
-        bench_xml_delim_3(b, |hs| XML_DELIM_3.find(hs))
-    }
-
-    #[bench]
-    fn xml_delim_3_stdlib_find_char_set(b: &mut test::Bencher) {
-        bench_xml_delim_3(b, |hs| hs.find(&['<', '>', '&'][..]))
-    }
-
-    #[bench]
-    fn xml_delim_3_stdlib_find_char_closure(b: &mut test::Bencher) {
-        bench_xml_delim_3(b, |hs| hs.find(|c| c == '<' || c == '>' || c == '&'))
-    }
-
-    #[bench]
-    fn xml_delim_3_stdlib_iterator_position(b: &mut test::Bencher) {
-        bench_xml_delim_3(b, |hs| {
-            hs.as_bytes()
-                .iter()
-                .position(|&c| c == b'<' || c == b'>' || c == b'&')
-        })
-    }
-
-    fn bench_xml_delim_5<F>(b: &mut test::Bencher, f: F)
-    where
-        F: Fn(&str) -> Option<usize>,
-    {
-        let mut haystack = prefix_string();
-        haystack.push('"');
-
-        b.iter(|| test::black_box(f(&haystack)));
-        b.bytes = haystack.len() as u64;
-    }
-
-    #[bench]
-    fn xml_delim_5_ascii_chars(b: &mut test::Bencher) {
-        bench_xml_delim_5(b, |hs| XML_DELIM_5.find(hs))
-    }
-
-    #[bench]
-    fn xml_delim_5_stdlib_find_char_set(b: &mut test::Bencher) {
-        bench_xml_delim_5(b, |hs| hs.find(&['<', '>', '&', '\'', '"'][..]))
-    }
-
-    #[bench]
-    fn xml_delim_5_stdlib_find_char_closure(b: &mut test::Bencher) {
-        bench_xml_delim_5(b, |hs| {
-            hs.find(|c| c == '<' || c == '>' || c == '&' || c == '\'' || c == '"')
-        })
-    }
-
-    #[bench]
-    fn xml_delim_5_stdlib_iterator_position(b: &mut test::Bencher) {
-        bench_xml_delim_3(b, |hs| {
-            hs.as_bytes()
-                .iter()
-                .position(|&c| c == b'<' || c == b'>' || c == b'&' || c == b'\'' || c == b'"')
-        })
-    }
-
-    lazy_static! {
-        static ref XYZZY: Substring<'static> = Substring::new("xyzzy");
-    }
-
-    fn bench_substring<F>(b: &mut test::Bencher, f: F)
-    where
-        F: Fn(&str) -> Option<usize>,
-    {
-        let mut haystack = prefix_string();
-        haystack.push_str("xyzzy");
-
-        b.iter(|| test::black_box(f(&haystack)));
-        b.bytes = haystack.len() as u64;
-    }
-
-    #[bench]
-    fn substring_with_created_searcher(b: &mut test::Bencher) {
-        bench_substring(b, |hs| XYZZY.find(hs))
-    }
-
-    #[bench]
-    fn substring_stdlib_find(b: &mut test::Bencher) {
-        bench_substring(b, |hs| hs.find("xyzzy"))
-    }
-}

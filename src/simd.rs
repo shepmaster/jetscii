@@ -41,7 +41,7 @@ where
     packed.cmpestri(haystack.as_ptr(), haystack.len() as i32)
 }
 
-/// The PCMPxSTRx instructions always read 16 bytes worth of
+/// The `PCMPxSTRx` instructions always read 16 bytes worth of
 /// data. Although the instructions handle unaligned memory access
 /// just fine, they might attempt to read off the end of a page
 /// and into a protected area.
@@ -237,7 +237,7 @@ pub struct Bytes {
 }
 
 impl Bytes {
-    pub /* const */ fn new(bytes: [u8; 16], needle_len: i32) -> Self {
+    pub fn new(bytes: [u8; 16], needle_len: i32) -> Self {
         Bytes {
             needle: unsafe { TransmuteToSimd { bytes }.simd },
             needle_len,
@@ -252,9 +252,12 @@ impl Bytes {
 }
 
 impl<'b> PackedCompareControl for &'b Bytes {
+    #[inline]
     fn needle(&self) -> __m128i {
         self.needle
     }
+
+    #[inline]
     fn needle_len(&self) -> i32 {
         self.needle_len
     }
@@ -267,12 +270,18 @@ pub struct ByteSubstring<'a> {
 }
 
 impl<'a> ByteSubstring<'a> {
-    pub /* const */ fn new(needle: &'a[u8]) -> Self {
-        use std::cmp;
-
+    pub fn new(needle: &'a[u8]) -> Self {
         let mut simd_needle = [0; 16];
-        let len = cmp::min(simd_needle.len(), needle.len());
-        simd_needle[..len].copy_from_slice(&needle[..len]);
+        let len = if simd_needle.len() < needle.len() {
+            simd_needle.len()
+        } else {
+            needle.len()
+        };
+        let mut i = 0;
+        while i < len {
+            simd_needle[i] = needle[i];
+            i += 1;
+        }
         ByteSubstring {
             complete_needle: needle,
             needle: unsafe { TransmuteToSimd { bytes: simd_needle }.simd },
@@ -306,9 +315,12 @@ impl<'a> ByteSubstring<'a> {
 }
 
 impl<'a, 'b> PackedCompareControl for &'b ByteSubstring<'a> {
+    #[inline]
     fn needle(&self) -> __m128i {
         self.needle
     }
+
+    #[inline]
     fn needle_len(&self) -> i32 {
         self.needle_len
     }
@@ -318,8 +330,9 @@ impl<'a, 'b> PackedCompareControl for &'b ByteSubstring<'a> {
 mod test {
     use proptest::prelude::*;
     use std::{fmt, str};
-    use memmap::MmapMut;
+    use memmap2::MmapMut;
     use region::Protection;
+    use lazy_static::lazy_static;
 
     use super::*;
 

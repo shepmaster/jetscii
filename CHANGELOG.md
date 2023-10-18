@@ -10,6 +10,8 @@ to [Semantic Versioning][].
 
 ## [Unreleased]
 
+- Trait bounds removed from generic types, bounds are only required for impls
+
 ## [0.5.3] - 2022-07-06
 
 - Fix buffer overflows in find. (#55)
