@@ -1,14 +1,37 @@
 use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 use jetscii::{ascii_chars, AsciiCharsConst, SubstringConst};
 use std::hint::black_box;
+use std::sync::OnceLock;
 
-static SPACE: AsciiCharsConst = ascii_chars!(' ');
-static XML_DELIM_3: AsciiCharsConst = ascii_chars!('<', '>', '&');
-static XML_DELIM_5: AsciiCharsConst = ascii_chars!('<', '>', '&', '\'', '"');
-static BIG_16: AsciiCharsConst =
-    ascii_chars!('A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P');
+static SPACE: OnceLock<AsciiCharsConst> = OnceLock::new();
 
-static SUBSTRING: SubstringConst = SubstringConst::new("xyzzy");
+fn space() -> &'static AsciiCharsConst {
+    SPACE.get_or_init(|| ascii_chars!(' '))
+}
+
+static XML_DELIM_3: OnceLock<AsciiCharsConst> = OnceLock::new();
+
+fn xml_delim_3() -> &'static AsciiCharsConst {
+    XML_DELIM_3.get_or_init(|| ascii_chars!('<', '>', '&'))
+}
+
+static XML_DELIM_5: OnceLock<AsciiCharsConst> = OnceLock::new();
+
+fn xml_delim_5() -> &'static AsciiCharsConst {
+    XML_DELIM_5.get_or_init(|| ascii_chars!('<', '>', '&', '\'', '"'))
+}
+
+static BIG_16: OnceLock<AsciiCharsConst> = OnceLock::new();
+
+fn big_16() -> &'static AsciiCharsConst {
+    BIG_16.get_or_init(|| ascii_chars!('A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P'))
+}
+
+static SUBSTRING: OnceLock<SubstringConst> = OnceLock::new();
+
+fn substring() -> &'static SubstringConst {
+    SUBSTRING.get_or_init(|| SubstringConst::new("xyzzy"))
+}
 
 fn prefix_string() -> String {
     "a".repeat(5 * 1024 * 1024)
@@ -23,7 +46,8 @@ fn spaces(c: &mut Criterion) {
     group.throughput(Throughput::Bytes(haystack.len() as u64));
 
     group.bench_function("ascii_chars", |b| {
-        b.iter(|| SPACE.find(&haystack));
+        let space = space();
+        b.iter(|| space.find(&haystack));
     });
     group.bench_function("stdlib_find_string", |b| {
         b.iter(|| haystack.find(" "));
@@ -58,7 +82,8 @@ fn xml3(c: &mut Criterion) {
     group.throughput(Throughput::Bytes(haystack.len() as u64));
 
     group.bench_function("ascii_chars", |b| {
-        b.iter(|| XML_DELIM_3.find(&haystack));
+        let xml_delim_3 = xml_delim_3();
+        b.iter(|| xml_delim_3.find(&haystack));
     });
     group.bench_function("stdlib_find_char_set", |b| {
         b.iter(|| haystack.find(&['<', '>', '&'][..]));
@@ -91,7 +116,8 @@ fn xml5(c: &mut Criterion) {
     group.throughput(Throughput::Bytes(haystack.len() as u64));
 
     group.bench_function("ascii_chars", |b| {
-        b.iter(|| XML_DELIM_5.find(&haystack));
+        let xml_delim_5 = xml_delim_5();
+        b.iter(|| xml_delim_5.find(&haystack));
     });
     group.bench_function("stdlib_find_char_set", |b| {
         b.iter(|| haystack.find(&['<', '>', '&', '\'', '"'][..]));
@@ -122,7 +148,7 @@ fn xml5(c: &mut Criterion) {
     });
 }
 
-fn big_16(c: &mut Criterion) {
+fn big_16_benches(c: &mut Criterion) {
     let mut haystack = prefix_string();
     haystack.push('P');
     let haystack = black_box(haystack);
@@ -131,7 +157,8 @@ fn big_16(c: &mut Criterion) {
     group.throughput(Throughput::Bytes(haystack.len() as u64));
 
     group.bench_function("ascii_chars", |b| {
-        b.iter(|| BIG_16.find(&haystack));
+        let big_16 = big_16();
+        b.iter(|| big_16.find(&haystack));
     });
     group.bench_function("stdlib_find_char_set", |b| {
         b.iter(|| {
@@ -214,7 +241,8 @@ fn big_16(c: &mut Criterion) {
     group.throughput(Throughput::Bytes(1));
 
     group.bench_function("ascii_chars", |b| {
-        b.iter(|| BIG_16.find(&haystack));
+        let big_16 = big_16();
+        b.iter(|| big_16.find(&haystack));
     });
     group.bench_function("stdlib_find_char_set", |b| {
         b.iter(|| {
@@ -298,7 +326,8 @@ fn substr(c: &mut Criterion) {
     group.throughput(Throughput::Bytes(haystack.len() as u64));
 
     group.bench_function("substring", |b| {
-        b.iter(|| SUBSTRING.find(&haystack));
+        let substring = substring();
+        b.iter(|| substring.find(&haystack));
     });
     group.bench_function("stdlib_find_string", |b| {
         b.iter(|| haystack.find("xyzzy"));
@@ -309,5 +338,5 @@ fn substr(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, spaces, xml3, xml5, big_16, substr);
+criterion_group!(benches, spaces, xml3, xml5, big_16_benches, substr);
 criterion_main!(benches);

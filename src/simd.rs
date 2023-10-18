@@ -237,7 +237,7 @@ pub struct Bytes {
 }
 
 impl Bytes {
-    pub const fn new(bytes: [u8; 16], needle_len: i32) -> Self {
+    pub fn new(bytes: [u8; 16], needle_len: i32) -> Self {
         Bytes {
             needle: unsafe { TransmuteToSimd { bytes }.simd },
             needle_len,
@@ -270,7 +270,7 @@ pub struct ByteSubstring<'a> {
 }
 
 impl<'a> ByteSubstring<'a> {
-    pub const fn new(needle: &'a[u8]) -> Self {
+    pub fn new(needle: &'a[u8]) -> Self {
         let mut simd_needle = [0; 16];
         let len = if simd_needle.len() < needle.len() {
             simd_needle.len()
@@ -290,7 +290,7 @@ impl<'a> ByteSubstring<'a> {
     }
 
     #[cfg(feature = "pattern")]
-    pub const fn needle_len(&self) -> usize {
+    pub fn needle_len(&self) -> usize {
         self.complete_needle.len()
     }
 

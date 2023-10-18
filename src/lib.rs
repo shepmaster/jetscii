@@ -216,29 +216,6 @@ where
         }
     }
 
-    // This constructor is used by the `bytes!` macro, and shouldn't be relied on directly.
-    //
-    // To allow F to be dropped in a const context, we require F to be Copy
-    // (thus, have no destructor). If we _know_ we're using sse4.2, we don't use
-    // the fallback at all, so it will be dropped in this function.
-    #[doc(hidden)]
-    #[allow(unused_variables)]
-    #[must_use]
-    pub const fn new_const(bytes: [u8; 16], len: i32, fallback: F) -> Self
-    where
-        F: Copy,
-    {
-        Self {
-            #[cfg(any(jetscii_sse4_2 = "yes", jetscii_sse4_2 = "maybe"))]
-            simd: simd::Bytes::new(bytes, len),
-
-            #[cfg(any(jetscii_sse4_2 = "maybe", jetscii_sse4_2 = "no"))]
-            fallback: fallback::Bytes::new(fallback),
-
-            _fallback: PhantomData,
-        }
-    }
-
     /// Searches the slice for the first matching byte in the set.
     #[inline]
     #[must_use]
@@ -279,25 +256,6 @@ where
         Self(Bytes::new(chars, len, fallback))
     }
 
-    // This constructor is used by the `ascii_chars!` macro, and shouldn't be relied on directly.
-    //
-    // To allow F to be dropped in a const context, we require F to be Copy
-    // (thus, have no destructor). If we _know_ we're using sse4.2, we don't use
-    // the fallback at all, so it will be dropped in this function.
-    #[doc(hidden)]
-    #[must_use]
-    pub const fn new_const(chars: [u8; 16], len: i32, fallback: F) -> Self
-    where
-        F: Copy,
-    {
-        let mut i = 0;
-        while i < chars.len() {
-            assert!(chars[i] < 128, "Cannot have non-ASCII bytes");
-            i += 1;
-        }
-        Self(Bytes::new_const(chars, len, fallback))
-    }
-
     /// Searches the string for the first matching ASCII byte in the set.
     #[inline]
     #[must_use]
@@ -320,7 +278,7 @@ pub struct ByteSubstring<'a> {
 
 impl<'a> ByteSubstring<'a> {
     #[must_use]
-    pub const fn new(needle: &'a [u8]) -> Self {
+    pub fn new(needle: &'a [u8]) -> Self {
         ByteSubstring {
             #[cfg(any(jetscii_sse4_2 = "yes", jetscii_sse4_2 = "maybe"))]
             simd: simd::ByteSubstring::new(needle),
@@ -358,7 +316,7 @@ pub struct Substring<'a>(ByteSubstring<'a>);
 
 impl<'a> Substring<'a> {
     #[must_use]
-    pub const fn new(needle: &'a str) -> Self {
+    pub fn new(needle: &'a str) -> Self {
         Substring(ByteSubstring::new(needle.as_bytes()))
     }
 

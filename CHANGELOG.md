@@ -10,9 +10,6 @@ to [Semantic Versioning][].
 
 ## [Unreleased]
 
-- Use `const fn`s where possible, which allows e.g.
-  `static SPACE: AsciiCharsConst = ascii_chars!(' ');`
-  and `static SUBSTRING: SubstringConst = SubstringConst::new("xyzzy");`
 - Trait bounds removed from generic types, bounds are only required for impls
 
 ## [0.5.3] - 2022-07-06

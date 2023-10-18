@@ -9,7 +9,7 @@ impl<F> Bytes<F>
 where
     F: Fn(u8) -> bool,
 {
-    pub const fn new(fallback: F) -> Self {
+    pub fn new(fallback: F) -> Self {
         Bytes { fallback }
     }
 
@@ -23,12 +23,12 @@ pub struct ByteSubstring<'a> {
 }
 
 impl<'a> ByteSubstring<'a> {
-    pub const fn new(needle: &'a[u8]) -> Self {
+    pub fn new(needle: &'a[u8]) -> Self {
         ByteSubstring { needle }
     }
 
     #[cfg(feature = "pattern")]
-    pub const fn needle_len(&self) -> usize {
+    pub fn needle_len(&self) -> usize {
         self.needle.len()
     }
 
