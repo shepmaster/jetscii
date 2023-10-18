@@ -11,6 +11,10 @@ fn main() {
 }
 
 fn cfg() {
+    println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-env-changed=CARGO_CFG_TARGET_ARCH");
+    println!("cargo:rerun-if-env-changed=CARGO_CFG_TARGET_FEATURE");
+
     let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
     let target_feature = env::var("CARGO_CFG_TARGET_FEATURE").unwrap_or_default();
 

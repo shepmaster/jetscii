@@ -105,8 +105,11 @@ where
 /// substring to search for is the empty string. It will never
 /// match. This behavior may change in the future to more closely
 /// align with the standard library.
-impl<'n, 'h> Pattern<'h> for Substring<'n> {
-    type Searcher = SubstringSearcher<'n, 'h>;
+impl<'h, T> Pattern<'h> for Substring<T>
+where
+    T: AsRef<[u8]>,
+{
+    type Searcher = SubstringSearcher<'h, T>;
 
     fn into_searcher(self, haystack: &'h str) -> Self::Searcher {
         SubstringSearcher {
@@ -116,21 +119,31 @@ impl<'n, 'h> Pattern<'h> for Substring<'n> {
     }
 }
 
-pub struct SubstringSearcher<'n, 'h> {
+pub struct SubstringSearcher<'h, T>
+where
+    T: AsRef<[u8]>,
+{
     searcher: CoreSearcher<'h>,
-    finder: Substring<'n>,
+    finder: Substring<T>,
 }
 
-impl<'a, 'n> PatternCore for &'a Substring<'n> {
+impl<'a, T> PatternCore for &'a Substring<T>
+where
+    T: AsRef<[u8]>,
+{
     fn find(&self, haystack: &str) -> Option<usize> {
         Substring::find(self, haystack)
     }
+
     fn len(&self) -> usize {
         self.needle_len()
     }
 }
 
-unsafe impl<'n, 'h> Searcher<'h> for SubstringSearcher<'n, 'h> {
+unsafe impl<'h, T> Searcher<'h> for SubstringSearcher<'h, T>
+where
+    T: AsRef<[u8]>
+{
     fn haystack(&self) -> &'h str {
         self.searcher.haystack
     }
@@ -221,6 +234,18 @@ mod test {
             prop_assume!(!needle.is_empty());
 
             let us = Substring::new(&needle);
+            let them: &str = &needle;
+
+            assert_eq!(haystack.find(us), haystack.find(them));
+        }
+
+        #[test]
+        fn owned_works_as_find_does_for_substrings(
+            (needle, haystack) in (any::<String>(), any::<String>())
+        ) {
+            prop_assume!(!needle.is_empty());
+
+            let us = Substring::new_owned(needle.to_string());
             let them: &str = &needle;
 
             assert_eq!(haystack.find(us), haystack.find(them));

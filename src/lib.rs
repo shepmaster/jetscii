@@ -142,7 +142,6 @@
 //! | <code>s.find("xyzzy")</code>                     | 5391 MB/s      |
 
 #[cfg(test)]
-#[macro_use]
 extern crate lazy_static;
 #[cfg(test)]
 extern crate memmap;
@@ -150,8 +149,6 @@ extern crate memmap;
 extern crate proptest;
 #[cfg(test)]
 extern crate region;
-
-use std::marker::PhantomData;
 
 include!(concat!(env!("OUT_DIR"), "/src/macros.rs"));
 
@@ -164,49 +161,18 @@ mod fallback;
 #[cfg(feature = "pattern")]
 mod pattern;
 
-macro_rules! dispatch {
-    (simd: $simd:expr,fallback: $fallback:expr,) => {
-        // If we can tell at compile time that we have support,
-        // call the optimized code directly.
-        #[cfg(jetscii_sse4_2 = "yes")]
-        {
-            $simd
-        }
-
-        // If we can tell at compile time that we will *never* have
-        // support, call the fallback directly.
-        #[cfg(jetscii_sse4_2 = "no")]
-        {
-            $fallback
-        }
-
-        // Otherwise, we will be run on a machine with or without
-        // support, so we perform runtime detection.
-        #[cfg(jetscii_sse4_2 = "maybe")]
-        {
-            if is_x86_feature_detected!("sse4.2") {
-                $simd
-            } else {
-                $fallback
-            }
-        }
-    };
-}
-
 /// Searches a slice for a set of bytes. Up to 16 bytes may be used.
-pub struct Bytes<F>
+pub enum Bytes<F>
 where
     F: Fn(u8) -> bool,
 {
     #[cfg(any(jetscii_sse4_2 = "yes", jetscii_sse4_2 = "maybe"))]
-    simd: simd::Bytes,
+    // Since we might not use the fallback implementation, we add
+    // PhantomData to avoid an unused type parameter
+    SIMD(simd::Bytes, core::marker::PhantomData<F>),
 
     #[cfg(any(jetscii_sse4_2 = "maybe", jetscii_sse4_2 = "no"))]
-    fallback: fallback::Bytes<F>,
-
-    // Since we might not use the fallback implementation, we add this
-    // to avoid unused type parameters.
-    _fallback: PhantomData<F>,
+    Fallback(fallback::Bytes<F>),
 }
 
 impl<F> Bytes<F>
@@ -221,23 +187,34 @@ where
     /// the same bytes as in the array.
     #[allow(unused_variables)]
     pub /* const */ fn new(bytes: [u8; 16], len: i32, fallback: F) -> Self {
-        Bytes {
-            #[cfg(any(jetscii_sse4_2 = "yes", jetscii_sse4_2 = "maybe"))]
-            simd: simd::Bytes::new(bytes, len),
+        #[cfg(jetscii_sse4_2 = "yes")]
+        {
+            Self::SIMD(simd::Bytes::new(bytes, len), Default::default())
+        }
 
-            #[cfg(any(jetscii_sse4_2 = "maybe", jetscii_sse4_2 = "no"))]
-            fallback: fallback::Bytes::new(fallback),
+        #[cfg(jetscii_sse4_2 = "no")]
+        {
+            Self::Fallback(fallback::Bytes::new(fallback))
+        }
 
-            _fallback: PhantomData,
+        #[cfg(jetscii_sse4_2 = "maybe")]
+        {
+            if is_x86_feature_detected!("sse4.2") {
+                Self::SIMD(simd::Bytes::new(bytes, len), Default::default())
+            } else {
+                Self::Fallback(fallback::Bytes::new(fallback))
+            }
         }
     }
 
     /// Searches the slice for the first matching byte in the set.
     #[inline]
     pub fn find(&self, haystack: &[u8]) -> Option<usize> {
-        dispatch! {
-            simd: unsafe { self.simd.find(haystack) },
-            fallback: self.fallback.find(haystack),
+        match self {
+            #[cfg(any(jetscii_sse4_2 = "yes", jetscii_sse4_2 = "maybe"))]
+            Self::SIMD(needle, _) => unsafe { needle.find(haystack) },
+            #[cfg(any(jetscii_sse4_2 = "maybe", jetscii_sse4_2 = "no"))]
+            Self::Fallback(needle) => needle.find(haystack),
         }
     }
 }
@@ -282,61 +259,88 @@ where
 /// A convenience type that can be used in a constant or static.
 pub type AsciiCharsConst = AsciiChars<fn(u8) -> bool>;
 
-/// Searches a slice for the first occurence of the subslice.
-pub struct ByteSubstring<'a> {
+/// Searches a slice for the first occurrence of the subslice.
+pub enum ByteSubstring<T> {
     #[cfg(any(jetscii_sse4_2 = "yes", jetscii_sse4_2 = "maybe"))]
-    simd: simd::ByteSubstring<'a>,
+    SIMD(simd::ByteSubstring<T>),
 
     #[cfg(any(jetscii_sse4_2 = "maybe", jetscii_sse4_2 = "no"))]
-    fallback: fallback::ByteSubstring<'a>,
+    Fallback(fallback::ByteSubstring<T>),
 }
 
-impl<'a> ByteSubstring<'a> {
-    pub /* const */ fn new(needle: &'a [u8]) -> Self {
-        ByteSubstring {
-            #[cfg(any(jetscii_sse4_2 = "yes", jetscii_sse4_2 = "maybe"))]
-            simd: simd::ByteSubstring::new(needle),
+impl<T> ByteSubstring<T>
+where
+    T: AsRef<[u8]>,
+{
+    pub /* const */ fn new(needle: T) -> Self {
+        #[cfg(jetscii_sse4_2 = "yes")]
+        {
+            Self::SIMD(simd::ByteSubstring::new(needle))
+        }
 
-            #[cfg(any(jetscii_sse4_2 = "maybe", jetscii_sse4_2 = "no"))]
-            fallback: fallback::ByteSubstring::new(needle),
+        #[cfg(jetscii_sse4_2 = "no")]
+        {
+            Self::Fallback(fallback::ByteSubstring::new(needle))
+        }
+
+        #[cfg(jetscii_sse4_2 = "maybe")]
+        if is_x86_feature_detected!("sse4.2") {
+            Self::SIMD(simd::ByteSubstring::new(needle))
+        } else {
+            Self::Fallback(fallback::ByteSubstring::new(needle))
         }
     }
 
     #[cfg(feature = "pattern")]
     fn needle_len(&self) -> usize {
-        dispatch! {
-            simd: self.simd.needle_len(),
-            fallback: self.fallback.needle_len(),
+        match self {
+            #[cfg(any(jetscii_sse4_2 = "yes", jetscii_sse4_2 = "maybe"))]
+            Self::SIMD(needle) => needle.needle_len(),
+            #[cfg(any(jetscii_sse4_2 = "maybe", jetscii_sse4_2 = "no"))]
+            Self::Fallback(needle) => needle.needle_len(),
         }
     }
 
-    /// Searches the slice for the first occurence of the subslice.
+    /// Searches the slice for the first occurrence of the subslice.
     #[inline]
     pub fn find(&self, haystack: &[u8]) -> Option<usize> {
-        dispatch! {
-            simd: unsafe { self.simd.find(haystack) },
-            fallback: self.fallback.find(haystack),
+        match self {
+            #[cfg(any(jetscii_sse4_2 = "yes", jetscii_sse4_2 = "maybe"))]
+            Self::SIMD(needle) => unsafe { needle.find(haystack) },
+            #[cfg(any(jetscii_sse4_2 = "maybe", jetscii_sse4_2 = "no"))]
+            Self::Fallback(needle) => needle.find(haystack),
         }
     }
 }
 
 /// A convenience type that can be used in a constant or static.
-pub type ByteSubstringConst = ByteSubstring<'static>;
+pub type ByteSubstringConst = ByteSubstring<&'static [u8]>;
 
-/// Searches a string for the first occurence of the substring.
-pub struct Substring<'a>(ByteSubstring<'a>);
+/// Searches a string for the first occurrence of the substring.
+pub struct Substring<T>(ByteSubstring<T>);
 
-impl<'a> Substring<'a> {
+impl<'a> Substring<&'a [u8]> {
     pub /* const */ fn new(needle: &'a str) -> Self {
         Substring(ByteSubstring::new(needle.as_bytes()))
     }
+}
 
+impl Substring<Vec<u8>> {
+    pub fn new_owned(needle: String) -> Self {
+        Substring(ByteSubstring::new(needle.into_bytes()))
+    }
+}
+
+impl<T> Substring<T>
+where
+    T: AsRef<[u8]>,
+{
     #[cfg(feature = "pattern")]
     fn needle_len(&self) -> usize {
         self.0.needle_len()
     }
 
-    /// Searches the string for the first occurence of the substring.
+    /// Searches the string for the first occurrence of the substring.
     #[inline]
     pub fn find(&self, haystack: &str) -> Option<usize> {
         self.0.find(haystack.as_bytes())
@@ -344,11 +348,16 @@ impl<'a> Substring<'a> {
 }
 
 /// A convenience type that can be used in a constant or static.
-pub type SubstringConst = Substring<'static>;
+pub type SubstringConst = Substring<&'static [u8]>;
+/// A convenience type to save the need to specify that the inner object is a slice.
+pub type SubstringRef<'a> = Substring<&'a [u8]>;
+/// A convenience type to save the need to specify that the inner object is owned.
+pub type SubstringOwned = Substring<Vec<u8>>;
 
 #[cfg(all(test, feature = "benchmarks"))]
 mod bench {
     extern crate test;
+    use lazy_static::lazy_static;
 
     use super::*;
 
@@ -476,7 +485,7 @@ mod bench {
     }
 
     lazy_static! {
-        static ref XYZZY: Substring<'static> = Substring::new("xyzzy");
+        static ref XYZZY: SubstringConst = Substring::new("xyzzy");
     }
 
     fn bench_substring<F>(b: &mut test::Bencher, f: F)

@@ -21,23 +21,26 @@ where
     }
 }
 
-pub struct ByteSubstring<'a> {
-    needle: &'a [u8],
+pub struct ByteSubstring<T> {
+    needle: T,
 }
 
-impl<'a> ByteSubstring<'a> {
-    pub /* const */ fn new(needle: &'a[u8]) -> Self {
+impl<T> ByteSubstring<T>
+where
+    T: AsRef<[u8]>,
+{
+    pub /* const */ fn new(needle: T) -> Self {
         ByteSubstring { needle }
     }
 
     #[cfg(feature = "pattern")]
     pub fn needle_len(&self) -> usize {
-        self.needle.len()
+        self.needle.as_ref().len()
     }
 
     pub fn find(&self, haystack: &[u8]) -> Option<usize> {
         haystack
-            .windows(self.needle.len())
-            .position(|window| window == self.needle)
+            .windows(self.needle.as_ref().len())
+            .position(|window| window == self.needle.as_ref())
     }
 }
