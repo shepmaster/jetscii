@@ -1,5 +1,4 @@
 #![cfg_attr(feature = "pattern", feature(pattern))]
-#![cfg_attr(feature = "benchmarks", feature(test))]
 
 //! A tiny library to efficiently search strings for sets of ASCII
 //! characters or byte slices for sets of bytes.
@@ -9,8 +8,7 @@
 //! ### Searching for a set of ASCII characters
 //!
 //! ```rust
-//! #[macro_use]
-//! extern crate jetscii;
+//! use jetscii::ascii_chars;
 //!
 //! fn main() {
 //!     let part_number = "86-J52:rev1";
@@ -22,8 +20,7 @@
 //! ### Searching for a set of bytes
 //!
 //! ```rust
-//! #[macro_use]
-//! extern crate jetscii;
+//! use jetscii::bytes;
 //!
 //! fn main() {
 //!     let raw_data = [0x00, 0x01, 0x10, 0xFF, 0x42];
@@ -61,8 +58,7 @@
 //!
 //! ```
 //! # #[cfg(feature = "pattern")]
-//! #[macro_use]
-//! extern crate jetscii;
+//! use jetscii::ascii_chars;
 //!
 //! fn main() {
 //! # #[cfg(feature = "pattern")] {
@@ -141,67 +137,86 @@
 //! | **<code>Substring::new("xyzzy").find(s)</code>** | **11475 MB/s** |
 //! | <code>s.find("xyzzy")</code>                     | 5391 MB/s      |
 
-#[cfg(test)]
-#[macro_use]
-extern crate lazy_static;
-#[cfg(test)]
-extern crate memmap;
-#[cfg(test)]
-extern crate proptest;
-#[cfg(test)]
-extern crate region;
-
 use std::marker::PhantomData;
 
 include!(concat!(env!("OUT_DIR"), "/src/macros.rs"));
 
-#[cfg(any(jetscii_sse4_2 = "yes", jetscii_sse4_2 = "maybe"))]
 mod simd;
 
-#[cfg(any(jetscii_sse4_2 = "maybe", jetscii_sse4_2 = "no"))]
+// This module may not be used if e.g. we statically know we have the sse4.2 target feature
+#[allow(unused)]
 mod fallback;
 
 #[cfg(feature = "pattern")]
 mod pattern;
 
 macro_rules! dispatch {
-    (simd: $simd:expr,fallback: $fallback:expr,) => {
-        // If we can tell at compile time that we have support,
-        // call the optimized code directly.
-        #[cfg(jetscii_sse4_2 = "yes")]
+    (x86: $x86:expr, aarch64: $aarch64:expr, fallback: $fallback:expr,) => ({
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         {
-            $simd
+            dispatch!(
+                target_feature: "sse4.2",
+                is_feature_enabled: is_x86_feature_detected,
+                simd: $x86,
+                fallback: $fallback,
+            )
+        }
+
+        #[cfg(any(target_arch = "aarch64", target_arch = "arm64ec"))]
+        {
+            dispatch!(
+                target_feature: "neon",
+                is_feature_enabled: is_aarch64_feature_detected,
+                simd: $aarch64,
+                fallback: $fallback,
+            )
         }
 
         // If we can tell at compile time that we will *never* have
         // support, call the fallback directly.
-        #[cfg(jetscii_sse4_2 = "no")]
+        #[cfg(not(any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64", target_arch = "arm64ec")))]
         {
             $fallback
         }
-
-        // Otherwise, we will be run on a machine with or without
-        // support, so we perform runtime detection.
-        #[cfg(jetscii_sse4_2 = "maybe")]
-        {
-            if is_x86_feature_detected!("sse4.2") {
+    });
+    (target_feature: $target_feature:tt, is_feature_enabled: $is_feature_enabled:ident, simd: $simd:expr, fallback: $fallback:expr,) => ({
+            // If we can tell at compile time that we have support,
+            // call the optimized code directly.
+            #[cfg(target_feature = $target_feature)]
+            {
                 $simd
-            } else {
-                $fallback
             }
-        }
-    };
+            // Otherwise, we will be run on a machine with or without
+            // support, so we perform runtime detection.
+            #[cfg(not(target_feature = $target_feature))]
+            {
+                if std::arch::$is_feature_enabled!($target_feature) {
+                    $simd
+                } else {
+                    $fallback
+                }
+            }
+    });
 }
 
 /// Searches a slice for a set of bytes. Up to 16 bytes may be used.
-pub struct Bytes<F>
-where
-    F: Fn(u8) -> bool,
-{
-    #[cfg(any(jetscii_sse4_2 = "yes", jetscii_sse4_2 = "maybe"))]
-    simd: simd::Bytes,
+pub struct Bytes<F> {
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    x86: simd::x86::Bytes,
 
-    #[cfg(any(jetscii_sse4_2 = "maybe", jetscii_sse4_2 = "no"))]
+    #[cfg(any(target_arch = "aarch64", target_arch = "arm64ec"))]
+    aarch64: simd::aarch64::Bytes,
+
+    #[cfg(not(any(
+        all(
+            any(target_arch = "x86", target_arch = "x86_64"),
+            target_feature = "sse4.2"
+        ),
+        all(
+            any(target_arch = "aarch64", target_arch = "arm64ec"),
+            target_feature = "neon"
+        ),
+    )))]
     fallback: fallback::Bytes<F>,
 
     // Since we might not use the fallback implementation, we add this
@@ -220,12 +235,25 @@ where
     /// intrinsics are not available. The closure **must** search for
     /// the same bytes as in the array.
     #[allow(unused_variables)]
-    pub /* const */ fn new(bytes: [u8; 16], len: i32, fallback: F) -> Self {
+    #[must_use]
+    pub fn new(bytes: [u8; 16], len: i32, fallback: F) -> Self {
         Bytes {
-            #[cfg(any(jetscii_sse4_2 = "yes", jetscii_sse4_2 = "maybe"))]
-            simd: simd::Bytes::new(bytes, len),
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            x86: simd::x86::Bytes::new(bytes, len),
 
-            #[cfg(any(jetscii_sse4_2 = "maybe", jetscii_sse4_2 = "no"))]
+            #[cfg(any(target_arch = "aarch64", target_arch = "arm64ec"))]
+            aarch64: simd::aarch64::Bytes::new(bytes, len),
+
+            #[cfg(not(any(
+                all(
+                    any(target_arch = "x86", target_arch = "x86_64"),
+                    target_feature = "sse4.2"
+                ),
+                all(
+                    any(target_arch = "aarch64", target_arch = "arm64ec"),
+                    target_feature = "neon"
+                ),
+            )))]
             fallback: fallback::Bytes::new(fallback),
 
             _fallback: PhantomData,
@@ -234,10 +262,20 @@ where
 
     /// Searches the slice for the first matching byte in the set.
     #[inline]
+    #[must_use]
     pub fn find(&self, haystack: &[u8]) -> Option<usize> {
         dispatch! {
-            simd: unsafe { self.simd.find(haystack) },
+            x86: unsafe { self.x86.find(haystack) },
+            aarch64: unsafe { self.aarch64.find(haystack) },
             fallback: self.fallback.find(haystack),
+        }
+    }
+
+    pub fn iter<'a>(&'a self, haystack: &'a [u8]) -> BytesIter<'a, F> {
+        dispatch! {
+            x86: BytesIter::X86(self.x86.iter(haystack)),
+            aarch64: BytesIter::Aarch64(self.aarch64.iter(haystack)),
+            fallback: BytesIter::Fallback(self.fallback.iter(haystack)),
         }
     }
 }
@@ -245,11 +283,121 @@ where
 /// A convenience type that can be used in a constant or static.
 pub type BytesConst = Bytes<fn(u8) -> bool>;
 
+pub enum BytesIter<'a, F> {
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    X86(simd::x86::BytesIter<'a>),
+
+    #[cfg(any(target_arch = "aarch64", target_arch = "arm64ec"))]
+    Aarch64(simd::aarch64::BytesIter<'a>),
+
+    #[cfg(not(any(
+        all(
+            any(target_arch = "x86", target_arch = "x86_64"),
+            target_feature = "sse4.2"
+        ),
+        all(
+            any(target_arch = "aarch64", target_arch = "arm64ec"),
+            target_feature = "neon"
+        ),
+    )))]
+    Fallback(fallback::BytesIter<'a, F>),
+    // Since we might not use the fallback implementation, we add this
+    // to avoid unused type parameters.
+    // This type is impossible to construct, but we still use the F parameter
+    _Impossible(std::convert::Infallible, PhantomData<F>),
+}
+
+impl<'a, F> Iterator for BytesIter<'a, F>
+where
+    F: Fn(u8) -> bool,
+{
+    type Item = usize;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            Self::X86(iter) => iter.next(),
+
+            #[cfg(any(target_arch = "aarch64", target_arch = "arm64ec"))]
+            Self::Aarch64(iter) => iter.next(),
+
+            #[cfg(not(any(
+                all(
+                    any(target_arch = "x86", target_arch = "x86_64"),
+                    target_feature = "sse4.2"
+                ),
+                all(
+                    any(target_arch = "aarch64", target_arch = "arm64ec"),
+                    target_feature = "neon"
+                ),
+            )))]
+            Self::Fallback(iter) => iter.next(),
+            // Since we might not use the fallback implementation, we add this
+            // to avoid unused type parameters.
+            // This type is impossible to construct, but we still use the F parameter
+            &mut Self::_Impossible(infailable, _) => match infailable {},
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        match self {
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            Self::X86(iter) => iter.size_hint(),
+
+            #[cfg(any(target_arch = "aarch64", target_arch = "arm64ec"))]
+            Self::Aarch64(iter) => iter.size_hint(),
+
+            #[cfg(not(any(
+                all(
+                    any(target_arch = "x86", target_arch = "x86_64"),
+                    target_feature = "sse4.2"
+                ),
+                all(
+                    any(target_arch = "aarch64", target_arch = "arm64ec"),
+                    target_feature = "neon"
+                ),
+            )))]
+            Self::Fallback(iter) => iter.size_hint(),
+            // Since we might not use the fallback implementation, we add this
+            // to avoid unused type parameters.
+            // This type is impossible to construct, but we still use the F parameter
+            &Self::_Impossible(infailable, _) => match infailable {},
+        }
+    }
+
+    fn count(self) -> usize
+    where
+        Self: Sized,
+    {
+        match self {
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            Self::X86(iter) => iter.count(),
+
+            #[cfg(any(target_arch = "aarch64", target_arch = "arm64ec"))]
+            Self::Aarch64(iter) => iter.count(),
+
+            #[cfg(not(any(
+                all(
+                    any(target_arch = "x86", target_arch = "x86_64"),
+                    target_feature = "sse4.2"
+                ),
+                all(
+                    any(target_arch = "aarch64", target_arch = "arm64ec"),
+                    target_feature = "neon"
+                ),
+            )))]
+            Self::Fallback(iter) => iter.count(),
+            // Since we might not use the fallback implementation, we add this
+            // to avoid unused type parameters.
+            // This type is impossible to construct, but we still use the F parameter
+            Self::_Impossible(infailable, _) => match infailable {},
+        }
+    }
+}
+
 /// Searches a string for a set of ASCII characters. Up to 16
 /// characters may be used.
-pub struct AsciiChars<F>(Bytes<F>)
-where
-    F: Fn(u8) -> bool;
+pub struct AsciiChars<F>(Bytes<F>);
 
 impl<F> AsciiChars<F>
 where
@@ -265,56 +413,106 @@ where
     /// ### Panics
     ///
     /// - If you provide a non-ASCII byte.
-    pub /* const */ fn new(chars: [u8; 16], len: i32, fallback: F) -> Self {
+    #[must_use]
+    pub fn new(chars: [u8; 16], len: i32, fallback: F) -> Self {
         for &b in &chars {
             assert!(b < 128, "Cannot have non-ASCII bytes");
         }
-        AsciiChars(Bytes::new(chars, len, fallback))
+        Self(Bytes::new(chars, len, fallback))
     }
 
     /// Searches the string for the first matching ASCII byte in the set.
     #[inline]
+    #[must_use]
     pub fn find(&self, haystack: &str) -> Option<usize> {
         self.0.find(haystack.as_bytes())
+    }
+
+    /// Return an iterator over the indices of the specified characters in the haystack.
+    pub fn iter<'a>(&'a self, haystack: &'a str) -> AsciiCharsIter<'a, F> {
+        AsciiCharsIter(self.0.iter(haystack.as_bytes()))
+    }
+
+    /// Get a [`Bytes`] reference with the same ascii characters
+    pub fn as_bytes(&self) -> &Bytes<F> {
+        &self.0
     }
 }
 
 /// A convenience type that can be used in a constant or static.
 pub type AsciiCharsConst = AsciiChars<fn(u8) -> bool>;
 
+pub struct AsciiCharsIter<'a, F>(BytesIter<'a, F>);
+
+impl<F> Iterator for AsciiCharsIter<'_, F>
+where
+    F: Fn(u8) -> bool,
+{
+    type Item = usize;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.next()
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.0.size_hint()
+    }
+
+    fn count(self) -> usize {
+        self.0.count()
+    }
+}
+
 /// Searches a slice for the first occurence of the subslice.
 pub struct ByteSubstring<'a> {
-    #[cfg(any(jetscii_sse4_2 = "yes", jetscii_sse4_2 = "maybe"))]
-    simd: simd::ByteSubstring<'a>,
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    x86: simd::x86::ByteSubstring<'a>,
 
-    #[cfg(any(jetscii_sse4_2 = "maybe", jetscii_sse4_2 = "no"))]
+    #[cfg(not(
+        any(
+            all(any(target_arch = "x86", target_arch = "x86_64"), target_feature = "sse4.2"),
+            // No aarch64 simd implementation of substring search
+            // all(any(target_arch = "aarch64", target_arch = "arm64ec"), target_feature = "neon"),
+        )
+    ))]
     fallback: fallback::ByteSubstring<'a>,
 }
 
 impl<'a> ByteSubstring<'a> {
-    pub /* const */ fn new(needle: &'a [u8]) -> Self {
-        ByteSubstring {
-            #[cfg(any(jetscii_sse4_2 = "yes", jetscii_sse4_2 = "maybe"))]
-            simd: simd::ByteSubstring::new(needle),
+    #[must_use]
+    pub fn new(needle: &'a [u8]) -> Self {
+        Self {
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            x86: simd::x86::ByteSubstring::new(needle),
 
-            #[cfg(any(jetscii_sse4_2 = "maybe", jetscii_sse4_2 = "no"))]
+            #[cfg(not(
+                any(
+                    all(any(target_arch = "x86", target_arch = "x86_64"), target_feature = "sse4.2"),
+                    // No aarch64 simd implementation of substring search
+                    // all(any(target_arch = "aarch64", target_arch = "arm64ec"), target_feature = "neon"),
+                )
+            ))]
             fallback: fallback::ByteSubstring::new(needle),
         }
     }
 
     #[cfg(feature = "pattern")]
+    #[must_use]
     fn needle_len(&self) -> usize {
         dispatch! {
-            simd: self.simd.needle_len(),
+            x86: self.x86.needle_len(),
+            aarch64: self.fallback.needle_len(),
             fallback: self.fallback.needle_len(),
         }
     }
 
     /// Searches the slice for the first occurence of the subslice.
     #[inline]
+    #[must_use]
     pub fn find(&self, haystack: &[u8]) -> Option<usize> {
         dispatch! {
-            simd: unsafe { self.simd.find(haystack) },
+            x86: unsafe { self.x86.find(haystack) },
+            aarch64: self.fallback.find(haystack),
             fallback: self.fallback.find(haystack),
         }
     }
@@ -327,17 +525,20 @@ pub type ByteSubstringConst = ByteSubstring<'static>;
 pub struct Substring<'a>(ByteSubstring<'a>);
 
 impl<'a> Substring<'a> {
-    pub /* const */ fn new(needle: &'a str) -> Self {
+    #[must_use]
+    pub fn new(needle: &'a str) -> Self {
         Substring(ByteSubstring::new(needle.as_bytes()))
     }
 
     #[cfg(feature = "pattern")]
+    #[must_use]
     fn needle_len(&self) -> usize {
         self.0.needle_len()
     }
 
     /// Searches the string for the first occurence of the substring.
     #[inline]
+    #[must_use]
     pub fn find(&self, haystack: &str) -> Option<usize> {
         self.0.find(haystack.as_bytes())
     }
@@ -345,158 +546,3 @@ impl<'a> Substring<'a> {
 
 /// A convenience type that can be used in a constant or static.
 pub type SubstringConst = Substring<'static>;
-
-#[cfg(all(test, feature = "benchmarks"))]
-mod bench {
-    extern crate test;
-
-    use super::*;
-
-    lazy_static! {
-        static ref SPACE: AsciiCharsConst = ascii_chars!(' ');
-        static ref XML_DELIM_3: AsciiCharsConst = ascii_chars!('<', '>', '&');
-        static ref XML_DELIM_5: AsciiCharsConst = ascii_chars!('<', '>', '&', '\'', '"');
-    }
-
-    fn prefix_string() -> String {
-        "a".repeat(5 * 1024 * 1024)
-    }
-
-    fn bench_space<F>(b: &mut test::Bencher, f: F)
-    where
-        F: Fn(&str) -> Option<usize>,
-    {
-        let mut haystack = prefix_string();
-        haystack.push(' ');
-
-        b.iter(|| test::black_box(f(&haystack)));
-        b.bytes = haystack.len() as u64;
-    }
-
-    #[bench]
-    fn space_ascii_chars(b: &mut test::Bencher) {
-        bench_space(b, |hs| SPACE.find(hs))
-    }
-
-    #[bench]
-    fn space_stdlib_find_string(b: &mut test::Bencher) {
-        bench_space(b, |hs| hs.find(" "))
-    }
-
-    #[bench]
-    fn space_stdlib_find_char(b: &mut test::Bencher) {
-        bench_space(b, |hs| hs.find(' '))
-    }
-
-    #[bench]
-    fn space_stdlib_find_char_set(b: &mut test::Bencher) {
-        bench_space(b, |hs| hs.find(&[' '][..]))
-    }
-
-    #[bench]
-    fn space_stdlib_find_closure(b: &mut test::Bencher) {
-        bench_space(b, |hs| hs.find(|c| c == ' '))
-    }
-
-    #[bench]
-    fn space_stdlib_iterator_position(b: &mut test::Bencher) {
-        bench_space(b, |hs| hs.as_bytes().iter().position(|&v| v == b' '))
-    }
-
-    fn bench_xml_delim_3<F>(b: &mut test::Bencher, f: F)
-    where
-        F: Fn(&str) -> Option<usize>,
-    {
-        let mut haystack = prefix_string();
-        haystack.push('&');
-
-        b.iter(|| test::black_box(f(&haystack)));
-        b.bytes = haystack.len() as u64;
-    }
-
-    #[bench]
-    fn xml_delim_3_ascii_chars(b: &mut test::Bencher) {
-        bench_xml_delim_3(b, |hs| XML_DELIM_3.find(hs))
-    }
-
-    #[bench]
-    fn xml_delim_3_stdlib_find_char_set(b: &mut test::Bencher) {
-        bench_xml_delim_3(b, |hs| hs.find(&['<', '>', '&'][..]))
-    }
-
-    #[bench]
-    fn xml_delim_3_stdlib_find_char_closure(b: &mut test::Bencher) {
-        bench_xml_delim_3(b, |hs| hs.find(|c| c == '<' || c == '>' || c == '&'))
-    }
-
-    #[bench]
-    fn xml_delim_3_stdlib_iterator_position(b: &mut test::Bencher) {
-        bench_xml_delim_3(b, |hs| {
-            hs.as_bytes()
-                .iter()
-                .position(|&c| c == b'<' || c == b'>' || c == b'&')
-        })
-    }
-
-    fn bench_xml_delim_5<F>(b: &mut test::Bencher, f: F)
-    where
-        F: Fn(&str) -> Option<usize>,
-    {
-        let mut haystack = prefix_string();
-        haystack.push('"');
-
-        b.iter(|| test::black_box(f(&haystack)));
-        b.bytes = haystack.len() as u64;
-    }
-
-    #[bench]
-    fn xml_delim_5_ascii_chars(b: &mut test::Bencher) {
-        bench_xml_delim_5(b, |hs| XML_DELIM_5.find(hs))
-    }
-
-    #[bench]
-    fn xml_delim_5_stdlib_find_char_set(b: &mut test::Bencher) {
-        bench_xml_delim_5(b, |hs| hs.find(&['<', '>', '&', '\'', '"'][..]))
-    }
-
-    #[bench]
-    fn xml_delim_5_stdlib_find_char_closure(b: &mut test::Bencher) {
-        bench_xml_delim_5(b, |hs| {
-            hs.find(|c| c == '<' || c == '>' || c == '&' || c == '\'' || c == '"')
-        })
-    }
-
-    #[bench]
-    fn xml_delim_5_stdlib_iterator_position(b: &mut test::Bencher) {
-        bench_xml_delim_3(b, |hs| {
-            hs.as_bytes()
-                .iter()
-                .position(|&c| c == b'<' || c == b'>' || c == b'&' || c == b'\'' || c == b'"')
-        })
-    }
-
-    lazy_static! {
-        static ref XYZZY: Substring<'static> = Substring::new("xyzzy");
-    }
-
-    fn bench_substring<F>(b: &mut test::Bencher, f: F)
-    where
-        F: Fn(&str) -> Option<usize>,
-    {
-        let mut haystack = prefix_string();
-        haystack.push_str("xyzzy");
-
-        b.iter(|| test::black_box(f(&haystack)));
-        b.bytes = haystack.len() as u64;
-    }
-
-    #[bench]
-    fn substring_with_created_searcher(b: &mut test::Bencher) {
-        bench_substring(b, |hs| XYZZY.find(hs))
-    }
-
-    #[bench]
-    fn substring_stdlib_find(b: &mut test::Bencher) {
-        bench_substring(b, |hs| hs.find("xyzzy"))
-    }
-}

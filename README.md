@@ -10,8 +10,7 @@ characters or byte slices for sets of bytes.
 ### Searching for a set of ASCII characters
 
 ```rust
-#[macro_use]
-extern crate jetscii;
+use jetscii::ascii_chars;
 
 fn main() {
     let part_number = "86-J52:rev1";
@@ -23,8 +22,7 @@ fn main() {
 ### Searching for a set of bytes
 
 ```rust
-#[macro_use]
-extern crate jetscii;
+use jetscii::bytes;
 
 fn main() {
     let raw_data = [0x00, 0x01, 0x10, 0xFF, 0x42];
