@@ -51,13 +51,13 @@ impl<'h> CoreSearcher<'h> {
     }
 }
 
-impl<'h, F> Pattern<'h> for AsciiChars<F>
+impl<F> Pattern for AsciiChars<F>
 where
     F: Fn(u8) -> bool,
 {
-    type Searcher = AsciiCharsSearcher<'h, F>;
+    type Searcher<'h> = AsciiCharsSearcher<'h, F>;
 
-    fn into_searcher(self, haystack: &'h str) -> Self::Searcher {
+    fn into_searcher(self, haystack: &str) -> Self::Searcher<'_> {
         AsciiCharsSearcher {
             searcher: CoreSearcher::new(haystack),
             finder: self,
@@ -105,10 +105,10 @@ where
 /// substring to search for is the empty string. It will never
 /// match. This behavior may change in the future to more closely
 /// align with the standard library.
-impl<'n, 'h> Pattern<'h> for Substring<'n> {
-    type Searcher = SubstringSearcher<'n, 'h>;
+impl<'n> Pattern for Substring<'n> {
+    type Searcher<'h> = SubstringSearcher<'n, 'h>;
 
-    fn into_searcher(self, haystack: &'h str) -> Self::Searcher {
+    fn into_searcher(self, haystack: &str) -> Self::Searcher<'_> {
         SubstringSearcher {
             searcher: CoreSearcher::new(haystack),
             finder: self,
