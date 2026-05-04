@@ -145,7 +145,7 @@
 #[macro_use]
 extern crate lazy_static;
 #[cfg(test)]
-extern crate memmap;
+extern crate memmap2;
 #[cfg(test)]
 extern crate proptest;
 #[cfg(test)]

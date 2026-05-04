@@ -318,7 +318,7 @@ impl<'a, 'b> PackedCompareControl for &'b ByteSubstring<'a> {
 mod test {
     use proptest::prelude::*;
     use std::{fmt, str};
-    use memmap::MmapMut;
+    use memmap2::MmapMut;
     use region::Protection;
 
     use super::*;
